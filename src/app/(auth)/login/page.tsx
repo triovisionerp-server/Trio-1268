@@ -372,7 +372,7 @@ export default function LoginPage() {
           transition={{ delay: 0.8 }}
           className="text-center mt-8 text-zinc-600 text-sm"
         >
-          <p>© 2025 Composite ERP System</p>
+          <p>© 2025 Triovision ERP System</p>
           <p className="text-xs mt-1">TrioVision International</p>
         </motion.div>
       </motion.div>

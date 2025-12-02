@@ -1,22 +1,18 @@
-import type { Metadata } from 'next';
-import { Inter } from 'next/font/google';
-import './globals.css';
+import { Analytics } from "@vercel/analytics/next";
 
-const inter = Inter({ subsets: ['latin'] });
-
-export const metadata: Metadata = {
-  title: 'TrioVision ERP System',
-  description: 'Composite Manufacturing ERP',
-};
-
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body className={inter.className}>{children}</body>
+      <head>
+        {/* ...existing head... */}
+      </head>
+      <body>
+        {/* ...existing layout markup... */}
+        {children}
+
+        {/* Vercel Analytics */}
+        <Analytics />
+      </body>
     </html>
   );
 }

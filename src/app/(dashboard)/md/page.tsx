@@ -12,6 +12,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
   PieChart, Pie, Cell 
 } from 'recharts';
+import { Analytics } from "@vercel/analytics/next";
 
 export default function MDDashboard() {
   const [user, setUser] = useState('');
@@ -270,4 +271,10 @@ export default function MDDashboard() {
       </div>
     </div>
   );
+
+  // add Analytics as part of this client page (no UI changes)
+  // Note: place after return container if you prefer inside layout instead
 }
+
+{/* Render Analytics - no visual impact, just adds analytics functionality */}
+<Analytics />
