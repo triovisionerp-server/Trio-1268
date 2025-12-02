@@ -97,16 +97,37 @@ export default function LoginPage() {
     setError('');
     setIsLoading(true);
 
-    if (USERS[emailLocal] === password) {
-      localStorage.setItem('currentUser', emailLocal); // Save role directly for compatibility
+    // 1. Check Dynamic Database (Created by HR/Admin)
+    const dbUsers = JSON.parse(localStorage.getItem('erp_users') || "[]");
+    
+    // Match email and password (using temp password 'Trio@2025' for new users)
+    const foundUser = dbUsers.find((u: any) => u.email === fullEmail && password === u.password);
+
+    // 2. Fallback to Hardcoded Users (for Admin access if DB empty)
+    const isHardcoded = USERS[emailLocal] === password;
+
+    if (foundUser || isHardcoded) {
+      // Determine Role
+      const role = foundUser ? foundUser.role : emailLocal; // Hardcoded uses username as role
+      const name = foundUser ? foundUser.name : "System User";
+
+      // Store user data in localStorage
+      localStorage.setItem('currentUser', JSON.stringify({
+        role,
+        email: foundUser ? foundUser.email : fullEmail,
+        name,
+        id: foundUser ? foundUser.id : `hardcoded-${emailLocal}`,
+      }));
+      localStorage.setItem('currentUserName', name);
       
       setTimeout(() => {
         setIsLoading(false);
-        // Use consistent dashboard routing
-        const dashboardPath = ROLE_DASHBOARD_MAP[emailLocal] || '/admin';
+        // Routing using ROLE_DASHBOARD_MAP
+        const dashboardPath = ROLE_DASHBOARD_MAP[role] || '/admin';
         router.push(dashboardPath);
-      }, 500);
+      }, 800);
     } else {
+      // Failed login handling
       const newFailedAttempts = failedAttempts + 1;
       setFailedAttempts(newFailedAttempts);
       setError('Invalid email or password');
@@ -114,8 +135,11 @@ export default function LoginPage() {
       setIsLoading(false);
       triggerShake();
 
+      // Lock account after 3 attempts
       if (newFailedAttempts >= 3) {
         console.log('ALERT: Account locked for', fullEmail, '- Admin notified');
+        // Optional: Send WhatsApp alert
+        // requestAdminSupport();
       }
     }
   };

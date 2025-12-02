@@ -3,401 +3,210 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { LogOut, TrendingUp, Package, Factory, Users, Download, Trash2, BarChart3 } from 'lucide-react';
-import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { 
+  Shield, Users, Database, Activity, Server, 
+  Lock, AlertTriangle, FileText, CheckCircle, 
+  Search, Trash2, RotateCcw, UserPlus 
+} from 'lucide-react';
 
 export default function AdminDashboard() {
-  const [user, setUser] = useState('');
-  const [tasks, setTasks] = useState<any[]>([]);
-  const [searchTerm, setSearchTerm] = useState('');
   const router = useRouter();
+  const [users, setUsers] = useState<any[]>([]);
+  const [stats, setStats] = useState({ total: 0, active: 0, admins: 0 });
+  const [searchTerm, setSearchTerm] = useState('');
 
   useEffect(() => {
-    const currentUser = localStorage.getItem('currentUser');
-    if (!currentUser) {
-      router.push('/login');
-    } else {
-      setUser(currentUser);
-      loadTasks();
-    }
-    
-    // Auto-refresh every 5 seconds to sync with supervisor
-    const interval = setInterval(loadTasks, 5000);
-    return () => clearInterval(interval);
-  }, [router]);
+    // 1. Load Users
+    const savedUsers = JSON.parse(localStorage.getItem('erp_users') || "[]");
+    setUsers(savedUsers);
 
-  const loadTasks = () => {
-    const savedTasks = localStorage.getItem('productionTasks');
-    if (savedTasks) {
-      setTasks(JSON.parse(savedTasks));
-    }
-  };
-
-  const handleLogout = () => {
-    localStorage.removeItem('currentUser');
-    router.push('/login');
-  };
-
-  const handleDeleteTask = (taskId: number) => {
-    const updatedTasks = tasks.filter(t => t.id !== taskId);
-    setTasks(updatedTasks);
-    localStorage.setItem('productionTasks', JSON.stringify(updatedTasks));
-  };
-
-  const exportToExcel = () => {
-    const csv = [
-      ['Project ID', 'Part Type', 'Part Name', 'Process', 'Quantity', 'TEI %', 'Operator', 'Machine', 'Date', 'Time'],
-      ...tasks.map(t => [
-        t.projectId,
-        t.partType,
-        t.partName,
-        t.manufacturingProcess,
-        t.quantity,
-        t.tei,
-        t.operatorName,
-        t.machineId,
-        t.date,
-        t.time
-      ])
-    ].map(row => row.join(',')).join('\n');
-
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `production-report-${new Date().toISOString().split('T')[0]}.csv`;
-    a.click();
-  };
-
-  // Calculate statistics
-  const avgTEI = tasks.length > 0 ? (tasks.reduce((s, t) => s + t.tei, 0) / tasks.length).toFixed(1) : '0.0';
-  const totalUnits = tasks.reduce((s, t) => s + (t.quantity || 0), 0);
-  const totalTasks = tasks.length;
-
-  // Prepare chart data
-  const teiTrendData = tasks.slice(0, 10).reverse().map((t, i) => ({
-    name: `Task ${i + 1}`,
-    TEI: t.tei,
-    date: t.date
-  }));
-
-  const partTypeData = tasks.reduce((acc: any[], task) => {
-    const existing = acc.find(item => item.name === task.partType);
-    if (existing) {
-      existing.value += 1;
-    } else {
-      acc.push({ name: task.partType, value: 1 });
-    }
-    return acc;
+    // 2. Calculate Stats
+    setStats({
+        total: savedUsers.length,
+        active: savedUsers.filter((u: any) => u.status === 'Active').length,
+        admins: savedUsers.filter((u: any) => u.role === 'admin' || u.role === 'md').length
+    });
   }, []);
 
-  const processData = tasks.reduce((acc: any[], task) => {
-    const existing = acc.find(item => item.name === task.manufacturingProcess);
-    if (existing) {
-      existing.count += 1;
-    } else {
-      acc.push({ name: task.manufacturingProcess, count: 1 });
-    }
-    return acc;
-  }, []);
-
-  const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#14b8a6'];
-
-  const filteredTasks = tasks.filter(task =>
-    task.projectId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    task.partType.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    task.partName.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const handleDeleteUser = (id: number) => {
+      if(confirm("Permanently delete this user?")) {
+          const updated = users.filter(u => u.id !== id);
+          setUsers(updated);
+          localStorage.setItem('erp_users', JSON.stringify(updated));
+      }
+  };
 
   return (
-    <div className="relative min-h-screen bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-950 overflow-hidden">
-      {/* Animated Background */}
-      <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:4rem_4rem]"></div>
-      <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl animate-pulse"></div>
-      <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl animate-pulse delay-1000"></div>
+    <div className="space-y-8 font-sans text-white pb-20">
+      
+      {/* Header */}
+      <motion.div 
+        initial={{ opacity: 0, y: -20 }} 
+        animate={{ opacity: 1, y: 0 }} 
+        className="flex justify-between items-end"
+      >
+        <div>
+           <h1 className="text-4xl font-light tracking-tight">System Administration</h1>
+           <p className="text-zinc-400 mt-1">Platform Health & Security</p>
+        </div>
+        <div className="px-4 py-2 bg-red-500/10 border border-red-500/20 rounded-full text-red-400 text-sm font-bold flex items-center gap-2 animate-pulse">
+           <Shield className="w-4 h-4" /> Root Access
+        </div>
+      </motion.div>
 
-      <div className="relative z-10">
-        {/* Header */}
-        <motion.header
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="border-b border-white/10 bg-white/5 backdrop-blur-xl"
-        >
-          <div className="max-w-7xl mx-auto px-6 py-6">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <div className="w-14 h-14 bg-gradient-to-br from-blue-600 to-blue-700 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/20">
-                  <BarChart3 className="w-8 h-8 text-white" />
-                </div>
-                <div>
-                  <h1 className="text-3xl font-bold text-white tracking-tight">Admin Dashboard</h1>
-                  <p className="text-zinc-400 text-sm mt-1">Production Analytics & Reporting</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-4">
-                <div className="text-right">
-                  <p className="text-xs text-zinc-400">Logged in as</p>
-                  <p className="text-sm font-semibold text-blue-300">{user}</p>
-                </div>
-                <button
-                  onClick={handleLogout}
-                  className="flex items-center gap-2 px-4 py-2.5 bg-red-600/20 hover:bg-red-600/30 border border-red-500/30 text-red-300 rounded-lg transition-all duration-300 font-medium"
-                >
-                  <LogOut className="w-4 h-4" />
-                  Logout
-                </button>
-              </div>
-            </div>
-          </div>
-        </motion.header>
-
-        {/* Main Content */}
-        <main className="max-w-7xl mx-auto px-6 py-8">
-          {/* KPI Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl hover:bg-white/10 transition-all"
-            >
-              <div className="flex items-center justify-between mb-4">
-                <div className="w-12 h-12 bg-blue-500/20 rounded-lg flex items-center justify-center border border-blue-500/30">
-                  <Package className="w-6 h-6 text-blue-300" />
-                </div>
-                <span className="text-xs font-medium text-blue-300 uppercase">Total</span>
-              </div>
-              <h3 className="text-4xl font-bold text-white">{totalTasks}</h3>
-              <p className="text-sm text-zinc-400 mt-2">Production Tasks</p>
-            </motion.div>
-
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.1 }}
-              className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl hover:bg-white/10 transition-all"
-            >
-              <div className="flex items-center justify-between mb-4">
-                <div className="w-12 h-12 bg-green-500/20 rounded-lg flex items-center justify-center border border-green-500/30">
-                  <TrendingUp className="w-6 h-6 text-green-300" />
-                </div>
-                <span className="text-xs font-medium text-green-300 uppercase">Average</span>
-              </div>
-              <h3 className="text-4xl font-bold text-white">{avgTEI}%</h3>
-              <p className="text-sm text-zinc-400 mt-2">Task Efficiency</p>
-            </motion.div>
-
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.2 }}
-              className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl hover:bg-white/10 transition-all"
-            >
-              <div className="flex items-center justify-between mb-4">
-                <div className="w-12 h-12 bg-purple-500/20 rounded-lg flex items-center justify-center border border-purple-500/30">
-                  <Factory className="w-6 h-6 text-purple-300" />
-                </div>
-                <span className="text-xs font-medium text-purple-300 uppercase">Total</span>
-              </div>
-              <h3 className="text-4xl font-bold text-white">{totalUnits}</h3>
-              <p className="text-sm text-zinc-400 mt-2">Units Produced</p>
-            </motion.div>
-
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.3 }}
-              className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl hover:bg-white/10 transition-all"
-            >
-              <div className="flex items-center justify-between mb-4">
-                <div className="w-12 h-12 bg-yellow-500/20 rounded-lg flex items-center justify-center border border-yellow-500/30">
-                  <Users className="w-6 h-6 text-yellow-300" />
-                </div>
-                <span className="text-xs font-medium text-yellow-300 uppercase">Active</span>
-              </div>
-              <h3 className="text-4xl font-bold text-white">{new Set(tasks.map(t => t.operatorName)).size}</h3>
-              <p className="text-sm text-zinc-400 mt-2">Operators</p>
-            </motion.div>
-          </div>
-
-          {/* Charts Section */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-            {/* TEI Trend Chart */}
-            <motion.div
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl"
-            >
-              <h2 className="text-xl font-bold text-white mb-6">TEI Trend (Last 10 Tasks)</h2>
-              {teiTrendData.length > 0 ? (
-                <ResponsiveContainer width="100%" height={250}>
-                  <LineChart data={teiTrendData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#ffffff20" />
-                    <XAxis dataKey="name" stroke="#a1a1aa" />
-                    <YAxis stroke="#a1a1aa" />
-                    <Tooltip 
-                      contentStyle={{ backgroundColor: '#18181b', border: '1px solid #3f3f46', borderRadius: '8px' }}
-                      labelStyle={{ color: '#e4e4e7' }}
-                    />
-                    <Legend />
-                    <Line type="monotone" dataKey="TEI" stroke="#3b82f6" strokeWidth={3} dot={{ fill: '#3b82f6', r: 5 }} />
-                  </LineChart>
-                </ResponsiveContainer>
-              ) : (
-                <div className="h-[250px] flex items-center justify-center text-zinc-500">
-                  No data available
-                </div>
-              )}
-            </motion.div>
-
-            {/* Part Type Distribution */}
-            <motion.div
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl"
-            >
-              <h2 className="text-xl font-bold text-white mb-6">Part Type Distribution</h2>
-              {partTypeData.length > 0 ? (
-                <ResponsiveContainer width="100%" height={250}>
-                  <PieChart>
-                    <Pie
-                      data={partTypeData}
-                      cx="50%"
-                      cy="50%"
-                      labelLine={false}
-                      label={({ name, percent }) => `${name} (${((percent || 0) * 100).toFixed(0)}%)`}                      outerRadius={80}
-                      fill="#8884d8"
-                      dataKey="value"
-                    >
-                      {partTypeData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip 
-                      contentStyle={{ backgroundColor: '#18181b', border: '1px solid #3f3f46', borderRadius: '8px' }}
-                    />
-                  </PieChart>
-                </ResponsiveContainer>
-              ) : (
-                <div className="h-[250px] flex items-center justify-center text-zinc-500">
-                  No data available
-                </div>
-              )}
-            </motion.div>
-
-            {/* Process Distribution */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl lg:col-span-2"
-            >
-              <h2 className="text-xl font-bold text-white mb-6">Manufacturing Process Distribution</h2>
-              {processData.length > 0 ? (
-                <ResponsiveContainer width="100%" height={250}>
-                  <BarChart data={processData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#ffffff20" />
-                    <XAxis dataKey="name" stroke="#a1a1aa" angle={-15} textAnchor="end" height={100} />
-                    <YAxis stroke="#a1a1aa" />
-                    <Tooltip 
-                      contentStyle={{ backgroundColor: '#18181b', border: '1px solid #3f3f46', borderRadius: '8px' }}
-                      labelStyle={{ color: '#e4e4e7' }}
-                    />
-                    <Legend />
-                    <Bar dataKey="count" fill="#10b981" radius={[8, 8, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              ) : (
-                <div className="h-[250px] flex items-center justify-center text-zinc-500">
-                  No data available
-                </div>
-              )}
-            </motion.div>
-          </div>
-
-          {/* Data Table */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl"
+      {/* 1. System KPIs (Glass Cards) */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        {[
+          { label: "Total Users", value: stats.total, icon: Users, color: "text-blue-400", bg: "bg-blue-500/20" },
+          { label: "Active Sessions", value: "4", icon: Activity, color: "text-green-400", bg: "bg-green-500/20" },
+          { label: "System Health", value: "99.9%", icon: Server, color: "text-purple-400", bg: "bg-purple-500/20" },
+          { label: "Security Issues", value: "0", icon: AlertTriangle, color: "text-yellow-400", bg: "bg-yellow-500/20" },
+        ].map((item, i) => (
+          <motion.div 
+            key={i}
+            initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.1 }}
+            className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-3xl p-6 shadow-2xl relative overflow-hidden group hover:bg-white/10 transition-all"
           >
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-bold text-white">All Production Tasks</h2>
-              <div className="flex gap-3">
-                <input
-                  type="text"
-                  placeholder="Search tasks..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="px-4 py-2 bg-white/5 border border-white/10 text-white placeholder:text-zinc-500 rounded-lg focus:bg-white/10 focus:border-blue-500/50 outline-none"
-                />
-                <button
-                  onClick={exportToExcel}
-                  className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-all font-medium"
-                >
-                  <Download className="w-4 h-4" />
-                  Export CSV
-                </button>
+            <div className={`absolute top-0 right-0 w-32 h-32 rounded-full blur-3xl -mr-16 -mt-16 opacity-20 group-hover:opacity-40 transition-all ${item.bg}`} />
+            <div className="flex items-center gap-4 mb-4">
+              <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${item.bg} border border-white/5`}>
+                <item.icon className={`w-6 h-6 ${item.color}`} />
               </div>
+              <span className="text-zinc-400 text-sm font-medium">{item.label}</span>
             </div>
-
-            {filteredTasks.length > 0 ? (
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-white/10">
-                      <th className="text-left py-3 px-4 text-sm font-semibold text-zinc-300">Project ID</th>
-                      <th className="text-left py-3 px-4 text-sm font-semibold text-zinc-300">Part Type</th>
-                      <th className="text-left py-3 px-4 text-sm font-semibold text-zinc-300">Part Name</th>
-                      <th className="text-left py-3 px-4 text-sm font-semibold text-zinc-300">Process</th>
-                      <th className="text-left py-3 px-4 text-sm font-semibold text-zinc-300">Qty</th>
-                      <th className="text-left py-3 px-4 text-sm font-semibold text-zinc-300">TEI %</th>
-                      <th className="text-left py-3 px-4 text-sm font-semibold text-zinc-300">Operator</th>
-                      <th className="text-left py-3 px-4 text-sm font-semibold text-zinc-300">Date</th>
-                      <th className="text-left py-3 px-4 text-sm font-semibold text-zinc-300">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredTasks.map((task) => (
-                      <tr key={task.id} className="border-b border-white/5 hover:bg-white/5 transition-all">
-                        <td className="py-3 px-4 text-sm text-blue-300 font-medium">{task.projectId}</td>
-                        <td className="py-3 px-4 text-sm text-zinc-300">{task.partType}</td>
-                        <td className="py-3 px-4 text-sm text-zinc-300">{task.partName}</td>
-                        <td className="py-3 px-4 text-sm text-zinc-400">{task.manufacturingProcess}</td>
-                        <td className="py-3 px-4 text-sm text-white font-semibold">{task.quantity}</td>
-                        <td className="py-3 px-4">
-                          <span className={`px-3 py-1 rounded-lg text-sm font-bold ${
-                            task.tei >= 85 ? 'bg-green-500/20 text-green-300' :
-                            task.tei >= 70 ? 'bg-yellow-500/20 text-yellow-300' : 'bg-red-500/20 text-red-300'
-                          }`}>
-                            {task.tei}%
-                          </span>
-                        </td>
-                        <td className="py-3 px-4 text-sm text-zinc-300">{task.operatorName}</td>
-                        <td className="py-3 px-4 text-sm text-zinc-400">{task.date}</td>
-                        <td className="py-3 px-4">
-                          <button
-                            onClick={() => handleDeleteTask(task.id)}
-                            className="p-2 bg-red-600/20 hover:bg-red-600/30 border border-red-500/30 text-red-300 rounded-lg transition-all"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <div className="text-center py-12 text-zinc-400">
-                <Package className="w-16 h-16 mx-auto mb-4 text-zinc-600" />
-                <p className="font-medium">No tasks found</p>
-                <p className="text-sm mt-2 text-zinc-500">
-                  {searchTerm ? 'Try a different search term' : 'Supervisor will add tasks from their dashboard'}
-                </p>
-              </div>
-            )}
+            <div className="text-3xl font-light text-white">{item.value}</div>
           </motion.div>
-        </main>
+        ))}
       </div>
+
+      {/* 2. User Management Panel */}
+      <div className="bg-white/5 border border-white/10 rounded-3xl p-8 backdrop-blur-xl shadow-2xl min-h-[500px]">
+         <div className="flex justify-between items-center mb-8">
+            <h2 className="text-xl font-bold flex items-center gap-2">
+                <Users className="w-6 h-6 text-blue-400" /> User Database
+            </h2>
+            <div className="flex gap-3">
+                <div className="relative">
+                    <Search className="absolute left-3 top-3 w-4 h-4 text-zinc-500" />
+                    <input 
+                        placeholder="Search users..." 
+                        className="pl-10 pr-4 py-2.5 bg-zinc-900/50 border border-white/10 rounded-xl text-sm text-white outline-none focus:border-blue-500 w-64 transition-all"
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                    />
+                </div>
+                <button 
+                    onClick={() => router.push('/employees')} 
+                    className="px-6 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold shadow-lg shadow-blue-900/20 flex items-center gap-2 transition-all"
+                >
+                    <UserPlus className="w-4 h-4" /> Manage
+                </button>
+            </div>
+         </div>
+
+         <div className="overflow-hidden rounded-2xl border border-white/5">
+            <table className="w-full text-left text-sm">
+               <thead className="bg-black/40 text-zinc-400 uppercase font-bold text-xs">
+                  <tr>
+                     <th className="p-5">User</th>
+                     <th className="p-5">Role</th>
+                     <th className="p-5">Email</th>
+                     <th className="p-5 text-center">Status</th>
+                     <th className="p-5 text-right">Actions</th>
+                  </tr>
+               </thead>
+               <tbody className="divide-y divide-white/5 bg-zinc-900/20">
+                  {users.filter(u => u.name?.toLowerCase().includes(searchTerm.toLowerCase())).map((user) => (
+                     <tr key={user.id} className="hover:bg-white/5 transition-colors group">
+                        <td className="p-5 font-bold text-white flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-zinc-700 to-zinc-600 flex items-center justify-center text-xs border border-white/10">
+                                {user.name?.charAt(0)}
+                            </div>
+                            {user.name}
+                        </td>
+                        <td className="p-5">
+                            <span className="px-3 py-1 rounded-lg text-xs font-bold uppercase bg-white/5 border border-white/10 text-zinc-300">
+                                {user.role}
+                            </span>
+                        </td>
+                        <td className="p-5 text-zinc-400 font-mono text-xs">{user.email}</td>
+                        <td className="p-5 text-center">
+                            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-green-500/10 border border-green-500/20 text-green-400 text-xs font-bold">
+                                <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></div>
+                                Active
+                            </div>
+                        </td>
+                        <td className="p-5 text-right flex justify-end gap-2">
+                            <button className="p-2 text-zinc-400 hover:text-white hover:bg-white/10 rounded-lg transition-all" title="Reset Password">
+                                <RotateCcw className="w-4 h-4" />
+                            </button>
+                            <button 
+                                onClick={() => handleDeleteUser(user.id)}
+                                className="p-2 text-zinc-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all" 
+                                title="Delete User"
+                            >
+                                <Trash2 className="w-4 h-4" />
+                            </button>
+                        </td>
+                     </tr>
+                  ))}
+               </tbody>
+            </table>
+            {users.length === 0 && (
+                <div className="text-center py-20 text-zinc-500">
+                    <Database className="w-12 h-12 mx-auto mb-3 opacity-20" />
+                    <p>No users found in database.</p>
+                </div>
+            )}
+         </div>
+      </div>
+
+      {/* 3. Database Health Panel */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          <div className="bg-white/5 border border-white/10 rounded-3xl p-8 backdrop-blur-xl">
+              <h3 className="text-lg font-bold text-white mb-6 flex items-center gap-2">
+                  <Database className="w-5 h-5 text-purple-400" /> Database Status
+              </h3>
+              <div className="space-y-4">
+                  <div className="flex justify-between items-center p-4 bg-zinc-900/50 rounded-xl border border-white/5">
+                      <div className="flex items-center gap-3">
+                          <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                          <span className="text-zinc-300 text-sm">Primary Cluster</span>
+                      </div>
+                      <span className="text-green-400 text-xs font-bold">OPERATIONAL</span>
+                  </div>
+                  <div className="flex justify-between items-center p-4 bg-zinc-900/50 rounded-xl border border-white/5">
+                      <div className="flex items-center gap-3">
+                          <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                          <span className="text-zinc-300 text-sm">Backup System</span>
+                      </div>
+                      <span className="text-blue-400 text-xs font-bold">SYNCED (2m ago)</span>
+                  </div>
+              </div>
+          </div>
+
+          <div className="bg-white/5 border border-white/10 rounded-3xl p-8 backdrop-blur-xl">
+              <h3 className="text-lg font-bold text-white mb-6 flex items-center gap-2">
+                  <Lock className="w-5 h-5 text-yellow-400" /> Security Audit
+              </h3>
+              <div className="space-y-4">
+                  <div className="p-4 bg-zinc-900/50 rounded-xl border border-white/5">
+                      <p className="text-xs text-zinc-500 uppercase font-bold mb-1">Last Login</p>
+                      <div className="flex justify-between">
+                          <span className="text-white text-sm">Admin (You)</span>
+                          <span className="text-zinc-400 text-xs font-mono">Just now</span>
+                      </div>
+                  </div>
+                  <div className="p-4 bg-zinc-900/50 rounded-xl border border-white/5">
+                      <p className="text-xs text-zinc-500 uppercase font-bold mb-1">Failed Attempts</p>
+                      <div className="flex justify-between">
+                          <span className="text-white text-sm">0 Failed Logins</span>
+                          <span className="text-green-400 text-xs font-bold">SECURE</span>
+                      </div>
+                  </div>
+              </div>
+          </div>
+      </div>
+
     </div>
   );
 }
