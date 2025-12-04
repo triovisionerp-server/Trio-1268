@@ -1,331 +1,319 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { motion, AnimatePresence } from 'framer-motion';
 import * as XLSX from 'xlsx'; 
 import { 
-  LogOut, UploadCloud, Package, CheckCircle, XCircle, UserPlus,
-  FileSpreadsheet, Bell, Trash2, AlertCircle, ChevronRight, Layers, Layout, Plus, RotateCcw 
+  Save, Upload, Download, Trash2, Plus, 
+  FileSpreadsheet, Search, ExternalLink, 
+  TrendingUp, Clock, CheckCircle, Activity, AlertCircle,
+  PieChart as PieIcon, BarChart3
 } from 'lucide-react';
-import { subscribeToProjects, addProjectToCloud, deleteProjectFromCloud } from '@/lib/services';
+import { 
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
+  PieChart, Pie, Cell, Legend 
+} from 'recharts';
+import { motion } from 'framer-motion';
 
-// --- CONFIGURATION ---
-const DEPARTMENTS = [
-  'Stock Building', 'Machining', 'Lamination', 'Assembly', 'Quality'
-];
-
-const SUPERVISORS = [
-  { name: 'Rajesh Kumar', role: 'Stock Lead', dept: 'Stock Building' },
-  { name: 'Amit Singh', role: 'Machining Lead', dept: 'Machining' },
-  { name: 'Sarah Jenkins', role: 'Lamination Lead', dept: 'Lamination' },
-  { name: 'Mike Ross', role: 'Assembly Lead', dept: 'Assembly' },
+// --- EXACT COLUMNS (From data-entry.html) ---
+const COLUMNS = [
+  { id: 'projectCode', name: 'Project Code', type: 'text', width: 120 },
+  { id: 'projectDescription', name: 'Description', type: 'text', width: 250 },
+  { id: 'destination', name: 'Destination', type: 'text', width: 150 },
+  { id: 'totalParts', name: 'Total Parts', type: 'number', width: 100 },
+  { id: 'totalPartsProduced', name: 'Produced', type: 'number', width: 100 },
+  { id: 'percentCompleted', name: '% Done', type: 'number', width: 100, readOnly: true },
+  { id: 'targetCompletionDate', name: 'Target Date', type: 'date', width: 140 },
+  { id: 'status', name: 'Status', type: 'text', width: 120 },
+  { id: 'ebom_resin', name: 'Est. Resin', type: 'text', width: 100, readOnly: true }
 ];
 
 export default function ProjectManagerDashboard() {
-  const router = useRouter();
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [user, setUser] = useState('');
-  const [boms, setBoms] = useState<any[]>([]);
-  const [selectedBOM, setSelectedBOM] = useState<any>(null);
-  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [projects, setProjects] = useState<any[]>([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [stats, setStats] = useState({ total: 0, active: 0, completed: 0 });
+  const [graphData, setGraphData] = useState<any[]>([]);
+  const [statusChart, setStatusChart] = useState<any[]>([]);
   
-  // Forms
-  const [assignForm, setAssignForm] = useState({
-     dept: 'Stock Building',
-     supervisor: 'Rajesh Kumar',
-     task: 'Base Making',
-     allocationSQM: 0 
-  });
-  const [newProjectForm, setNewProjectForm] = useState({ code: '', name: '', client: '', molds: 1, sqm: 10 });
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const router = useRouter();
 
-  // --- 1. LIVE DATA CONNECTION ---
+  // --- 1. LOAD & ANALYZE DATA ---
   useEffect(() => {
-    const currentUser = localStorage.getItem('currentUser');
-    setUser('Project Manager');
-
-    // Connect to Cloud
-    const unsubscribe = subscribeToProjects((data) => {
-      console.log("Live Data Received:", data); // Debugging
-      setBoms(data || []);
-    });
-
-    // Cleanup connection when leaving page
-    return () => {
-      try { if (typeof unsubscribe === 'function') unsubscribe(); } catch { /* ignore */ }
-    };
+    const saved = localStorage.getItem('boms'); // Using 'boms' as the master DB
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      setProjects(parsed);
+      runAnalytics(parsed);
+    }
   }, []);
 
+  // --- 2. ANALYTICS ENGINE (Odoo Style) ---
+  const runAnalytics = (data: any[]) => {
+    // KPIs
+    const total = data.length;
+    const active = data.filter(p => p.status === 'In Progress').length;
+    const completed = data.filter(p => p.status === 'Completed').length;
+    setStats({ total, active, completed });
 
-  // --- 2. SMART EXCEL UPLOAD ---
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    // Graph 1: Project Status Distribution (Pie)
+    const pie = [
+        { name: 'Pending', value: data.filter(p => p.status === 'Pending').length, color: '#f59e0b' },
+        { name: 'In Progress', value: active, color: '#3b82f6' },
+        { name: 'Completed', value: completed, color: '#10b981' }
+    ];
+    setStatusChart(pie);
+
+    // Graph 2: Material Load (Bar - Top 5 Projects)
+    // Shows how much Resin each big project needs
+    const bar = data
+        .filter(p => p.status !== 'Completed')
+        .sort((a, b) => (b.sqmPerPart || 0) - (a.sqmPerPart || 0))
+        .slice(0, 5)
+        .map(p => ({
+            name: p.projectCode,
+            Resin: parseFloat(p.ebom?.resin) || 0,
+            Gelcoat: parseFloat(p.ebom?.gelcoat) || 0
+        }));
+    setGraphData(bar);
+  };
+
+  // --- 3. DATA ENTRY & AUTO-CALC ---
+  const handleCellChange = (index: number, field: string, value: any) => {
+    const updated = [...projects];
+    updated[index][field] = value;
+
+    // Auto-Math: Progress
+    if (field === 'totalParts' || field === 'totalPartsProduced') {
+       const total = parseFloat(updated[index].totalParts) || 0;
+       const produced = parseFloat(updated[index].totalPartsProduced) || 0;
+       const percent = total > 0 ? Math.round((produced / total) * 100) : 0;
+       
+       updated[index].percentCompleted = percent;
+       updated[index].totalPartsToBeProduced = Math.max(0, total - produced);
+       
+       if (percent >= 100) updated[index].status = 'Completed';
+       else if (percent > 0) updated[index].status = 'In Progress';
+    }
+
+    setProjects(updated);
+    localStorage.setItem('boms', JSON.stringify(updated));
+    runAnalytics(updated); // Update graphs live!
+  };
+
+  // --- 4. EXCEL IMPORT (Auto-BOM) ---
+  const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = async (evt) => {
-      try {
-        const arrayBuffer = evt.target?.result;
-        const wb = XLSX.read(arrayBuffer, { type: 'array' });
-        const ws = wb.Sheets[wb.SheetNames[0]];
-        const rows: any[] = XLSX.utils.sheet_to_json(ws, { defval: '' });
+    reader.onload = (evt) => {
+        const bstr = evt.target?.result;
+        const wb = XLSX.read(bstr, { type: 'binary' });
+        const json = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
 
-        if (!rows || rows.length === 0) {
-          alert('Excel file is empty or unreadable.');
-          return;
-        }
-
-        // Build optimistic items
-        const optimisticItems = rows.map((row: any, i: number) => {
-          const pCode = row['Code'] || row['Project Code'] || row['Job No'] || `AUTO-${Math.floor(Math.random()*1000)}`;
-          const pDesc = row['Description'] || row['Project Name'] || row['Desc'] || 'No Description';
-          const pSQM = parseFloat(row['SQM'] || row['Area'] || row['Total SQM']) || 10;
-          const pMolds = parseInt(row['Molds'] || row['Qty']) || 1;
-
-          const tempId = `temp-${Date.now()}-${i}-${Math.random().toString(36).slice(2,6)}`;
-          return {
-            id: tempId,
-            projectCode: pCode,
-            projectDescription: pDesc,
-            customer: row['Customer'] || row['Client'] || 'General',
-            moldSeries: row['Series'] || '32',
-            totalMolds: pMolds,
-            targetPartsCompletion: parseInt(row['Target']) || 50,
-            sqmPerPart: pSQM,
-            status: 'Pending',
-            progress: 0,
-            materials: {
-              resinType: 'Standard',
-              gelcoatPerMold: parseFloat((pSQM * 0.6).toFixed(2)),
-              resinPerMold: parseFloat((pSQM * 1.5).toFixed(2))
-            }
-          };
+        const mapped = json.map((row: any) => {
+            const sqm = parseFloat(row['SQM'] || row['Area']) || 10;
+            return {
+                id: Date.now() + Math.random(),
+                projectCode: row['Code'] || row['Project Code'] || 'NEW',
+                projectDescription: row['Description'] || 'Imported',
+                totalParts: row['Total'] || row['Qty'] || 0,
+                sqmPerPart: sqm,
+                status: 'Pending',
+                // AUTO-BOM CALCULATOR
+                ebom: {
+                    resin: (sqm * 1.5).toFixed(1),
+                    gelcoat: (sqm * 0.6).toFixed(1),
+                    manpower: Math.ceil(sqm / 5)
+                }
+            };
         });
 
-        // Show immediate UI feedback
-        setBoms(prev => [...optimisticItems, ...prev]);
+        const finalData = [...mapped, ...projects];
+        setProjects(finalData);
+        localStorage.setItem('boms', JSON.stringify(finalData));
+        runAnalytics(finalData);
+        alert(`Imported ${mapped.length} projects with Auto-BOM!`);
+    };
+    reader.readAsBinaryString(file);
+    e.target.value = ""; 
+  };
 
-        // Upload to cloud and reconcile ids
-        const uploadResults = await Promise.allSettled(rows.map(async (row: any, i: number) => {
-          const optimistic = optimisticItems[i];
-          const payload = {
-            projectCode: optimistic.projectCode,
-            projectDescription: optimistic.projectDescription,
-            customer: optimistic.customer,
-            moldSeries: optimistic.moldSeries,
-            totalMolds: optimistic.totalMolds,
-            targetPartsCompletion: optimistic.targetPartsCompletion,
-            sqmPerPart: optimistic.sqmPerPart,
-            status: optimistic.status,
-            progress: optimistic.progress,
-            materials: optimistic.materials
-          };
+  const addNewRow = () => {
+      setProjects([...projects, { id: Date.now(), status: 'Pending', ebom: { resin: 0 } }]);
+  };
 
-          try {
-            const cloudId = await addProjectToCloud(payload);
-            // replace temp id with cloud id
-            setBoms(prev => prev.map(p => p.id === optimistic.id ? { ...p, id: cloudId } : p));
-            return { ok: true };
-          } catch (err) {
-            console.error('Upload row error:', err);
-            // remove optimistic row on failure
-            setBoms(prev => prev.filter p => p.id !== optimistic.id));
-            return { ok: false };
-          }
-        }));
-
-        const succeeded = uploadResults.filter(r => r.status === 'fulfilled' && (r as any).value?.ok !== false).length;
-        alert(`Upload finished. Projects attempted: ${rows.length}. Succeeded: ${succeeded}.`);
-      } catch (err) {
-        console.error('Excel Error:', err);
-        alert('Error reading Excel file. Check console for details.');
-      } finally {
-        if (e.target) e.target.value = '';
+  const clearAll = () => {
+      if(confirm("Clear Database?")) {
+          setProjects([]);
+          localStorage.removeItem('boms');
+          runAnalytics([]);
       }
-    };
-
-    reader.readAsArrayBuffer(file);
-  };
-
-  // --- 3. MANUAL CREATE ---
-  const handleCreateManual = async () => {
-    if(!newProjectForm.code || !newProjectForm.name) return alert("Fill required fields");
-    
-    const newProject = {
-        projectCode: newProjectForm.code,
-        projectDescription: newProjectForm.name,
-        customer: newProjectForm.client,
-        moldSeries: '32', 
-        totalMolds: newProjectForm.molds,
-        targetPartsCompletion: 50,
-        sqmPerPart: newProjectForm.sqm,
-        status: 'Pending',
-        progress: 0,
-        materials: { 
-            resinType: 'Standard', 
-            gelcoatPerMold: parseFloat((newProjectForm.sqm * 0.6).toFixed(1))
-        }
-    };
-
-    // Optimistic UI: add temp item immediately
-    const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
-    const tempProject = { id: tempId, ...newProject };
-    setBoms(prev => [tempProject, ...prev]);
-
-    try {
-      const cloudId = await addProjectToCloud(newProject);
-      // replace temp id with cloud id
-      setBoms(prev => prev.map(p => p.id === tempId ? { ...p, id: cloudId } : p));
-      setShowCreateModal(false);
-      alert('Project created successfully.');
-    } catch (err) {
-      console.error('Create error', err);
-      // remove optimistic item on failure
-      setBoms(prev => prev.filter(p => p.id !== tempId));
-      alert('Failed to create project. Check console.');
-    }
-  };
-
-  const deleteProject = async (id: string) => {
-     if(confirm("Delete this project from the Cloud?")) {
-         try {
-           await deleteProjectFromCloud(id);
-         } catch (err) {
-           console.error('Delete error', err);
-           alert('Failed to delete project. Check console.');
-         }
-     }
-  };
-
-  const getGelcoat = (bom: any) => {
-      if (!bom) return "0.0";
-      const molds = Number(bom.totalMolds || 0);
-      const perMold = Number(bom.materials?.gelcoatPerMold || 0);
-      return (molds * perMold).toFixed(1);
   };
 
   return (
-    <div className="space-y-8 font-sans text-white pb-10">
+    <div className="min-h-screen bg-[#f0f2f5] font-sans text-[#333] pb-20">
       
-      {/* Header */}
-      <div className="flex justify-between items-end">
-        <div>
-           <h1 className="text-4xl font-light text-white tracking-tight">Project Manager</h1>
-           <p className="text-zinc-400 mt-1">Cloud Production Server</p>
-        </div>
-        <div className="flex items-center gap-4">
-            <div className="text-right hidden sm:block">
-                <p className="text-xs text-zinc-400 uppercase font-bold">Logged In</p>
-                <p className="text-white font-medium">{user}</p>
+      {/* --- TOP SECTION: ODOO STYLE ANALYTICS --- */}
+      <div className="bg-[linear-gradient(135deg,#4c90af_0%,#175d69_100%)] text-white p-8 pb-32 shadow-xl">
+         <div className="max-w-[1800px] mx-auto flex justify-between items-center">
+            <div>
+                <h1 className="text-3xl font-bold">Project Command Center</h1>
+                <p className="text-blue-200 text-sm opacity-80">Real-time Overview & Planning</p>
             </div>
-        </div>
+            <div className="flex gap-3">
+                 <div className="text-right">
+                    <p className="text-xs uppercase font-bold opacity-70">Active Projects</p>
+                    <p className="text-2xl font-bold">{stats.active}</p>
+                 </div>
+                 <div className="h-10 w-px bg-white/20"></div>
+                 <div className="text-right">
+                    <p className="text-xs uppercase font-bold opacity-70">Completion Rate</p>
+                    <p className="text-2xl font-bold text-green-400">
+                        {stats.total > 0 ? Math.round((stats.completed/stats.total)*100) : 0}%
+                    </p>
+                 </div>
+            </div>
+         </div>
       </div>
 
-      {/* Action Bar */}
-      <div className="flex justify-between items-center bg-white/5 border border-white/10 p-6 rounded-3xl backdrop-blur-xl">
-        <div>
-            <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                <FileSpreadsheet className="w-6 h-6 text-green-400" /> Production Database
-            </h2>
-            <p className="text-sm text-zinc-400 mt-1">Real-time Sync across all devices</p>
-        </div>
-        <div className="flex gap-3">
-            <button onClick={() => setShowCreateModal(true)} className="flex items-center gap-2 px-6 py-4 bg-purple-600 hover:bg-purple-500 text-white rounded-2xl font-bold shadow-lg transition-all">
-                <Plus className="w-5 h-5" /> New Project
-            </button>
-            <div className="relative">
-                <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept=".xlsx, .xls" className="hidden" />
-                <button onClick={() => fileInputRef.current?.click()} className="flex items-center gap-3 px-8 py-4 bg-green-600 hover:bg-green-500 text-white rounded-2xl font-bold shadow-lg shadow-green-900/20 transition-all transform hover:scale-105">
-                    <UploadCloud className="w-5 h-5" /> Import Excel
-                </button>
-            </div>
-        </div>
+      <div className="max-w-[1800px] mx-auto px-6 -mt-24 space-y-8">
+          
+          {/* CHARTS ROW (Floating Glass Cards) */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              
+              {/* Status Chart */}
+              <div className="bg-white/10 backdrop-blur-xl border border-white/20 p-6 rounded-3xl shadow-2xl flex flex-col justify-between min-h-[300px]">
+                  <h3 className="text-white font-bold flex items-center gap-2">
+                      <PieIcon className="w-5 h-5 text-yellow-400"/> Project Status
+                  </h3>
+                  <div className="h-64 w-full">
+                      <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                              <Pie data={statusChart} cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
+                                  {statusChart.map((entry, index) => (
+                                      <Cell key={`cell-${index}`} fill={entry.color} />
+                                  ))}
+                              </Pie>
+                              <Tooltip contentStyle={{borderRadius:'12px'}} />
+                              <Legend verticalAlign="bottom" height={36}/>
+                          </PieChart>
+                      </ResponsiveContainer>
+                  </div>
+              </div>
+
+              {/* Material Load Chart */}
+              <div className="bg-white/10 backdrop-blur-xl border border-white/20 p-6 rounded-3xl shadow-2xl min-h-[300px]">
+                  <h3 className="text-white font-bold flex items-center gap-2">
+                      <BarChart3 className="w-5 h-5 text-blue-400"/> Material Load (Top 5 Projects)
+                  </h3>
+                  <div className="h-64 w-full mt-4">
+                      <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={graphData} barSize={20} layout="vertical">
+                              <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="rgba(255,255,255,0.1)" />
+                              <XAxis type="number" stroke="#ccc" fontSize={10} />
+                              <YAxis dataKey="name" type="category" width={80} stroke="#ccc" fontSize={10} />
+                              <Tooltip contentStyle={{borderRadius:'12px'}} cursor={{fill: 'rgba(255,255,255,0.05)'}} />
+                              <Bar dataKey="Resin" fill="#3b82f6" name="Resin (kg)" radius={[0, 4, 4, 0]} />
+                              <Bar dataKey="Gelcoat" fill="#10b981" name="Gelcoat (kg)" radius={[0, 4, 4, 0]} />
+                          </BarChart>
+                      </ResponsiveContainer>
+                  </div>
+              </div>
+          </div>
+
+          {/* 3. DATA GRID (Excel Style - White) */}
+          <div className="bg-white rounded-2xl shadow-xl border border-gray-200 overflow-hidden">
+              
+              {/* Toolbar */}
+              <div className="p-4 bg-gray-50 border-b border-gray-200 flex justify-between items-center">
+                  <div className="flex gap-2">
+                      <button onClick={() => localStorage.setItem('boms', JSON.stringify(projects))} className="bg-[#1c8ccc] hover:bg-[#1565c0] text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2">
+                          <Save className="w-4 h-4"/> Save Changes
+                      </button>
+                      <button onClick={() => fileInputRef.current?.click()} className="bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2">
+                          <Upload className="w-4 h-4"/> Import Excel
+                          <input type="file" ref={fileInputRef} onChange={handleImport} className="hidden" accept=".xlsx" />
+                      </button>
+                      <button onClick={clearAll} className="bg-red-50 text-red-600 hover:bg-red-100 px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2">
+                          <Trash2 className="w-4 h-4"/> Clear DB
+                      </button>
+                  </div>
+                  <div className="relative">
+                      <Search className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
+                      <input 
+                          placeholder="Search projects..." 
+                          className="pl-9 pr-4 py-2 bg-white border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-[#1c8ccc] w-64"
+                          onChange={(e) => setSearchTerm(e.target.value)}
+                      />
+                  </div>
+              </div>
+
+              {/* Table */}
+              <div className="overflow-x-auto max-h-[600px]">
+                  <table className="w-full text-left text-sm border-collapse">
+                      <thead className="sticky top-0 z-10 shadow-sm">
+                          <tr className="bg-[#ffe0b2]">
+                              <th className="p-3 border border-[#ffcc80] text-[#e65100] text-center w-12 text-xs font-bold">#</th>
+                              {COLUMNS.map(col => (
+                                  <th key={col.id} className="p-3 border border-[#ffcc80] text-[#e65100] text-xs font-bold whitespace-nowrap text-center" style={{minWidth: col.width || 120}}>
+                                      {col.name}
+                                  </th>
+                              ))}
+                              <th className="p-3 border border-[#ffcc80] text-[#e65100] text-center text-xs font-bold w-20">Open</th>
+                          </tr>
+                      </thead>
+                      <tbody>
+                          {projects.filter(r => !searchTerm || JSON.stringify(r).toLowerCase().includes(searchTerm.toLowerCase())).map((row, i) => (
+                              <tr key={row.id} className="hover:bg-[#fff3e0] odd:bg-[#fcfcfc] group">
+                                  <td className="p-2 border border-gray-300 text-center font-bold text-gray-500 text-xs bg-gray-100">{i + 1}</td>
+                                  
+                                  {COLUMNS.map(col => (
+                                      <td key={col.id} className="p-0 border border-gray-300">
+                                          {col.id === 'percentCompleted' ? (
+                                               <div className="w-full h-8 flex items-center px-2">
+                                                   <div className="w-full h-1.5 bg-gray-200 rounded-full overflow-hidden mr-2">
+                                                       <div className={`h-full ${row[col.id] >= 100 ? 'bg-green-500' : 'bg-blue-500'}`} style={{width: `${row[col.id]}%`}}></div>
+                                                   </div>
+                                                   <span className="text-xs font-bold text-gray-600">{row[col.id]}%</span>
+                                               </div>
+                                          ) : (
+                                              <input 
+                                                  type={col.type || 'text'}
+                                                  readOnly={col.readOnly}
+                                                  className={`w-full h-8 px-2 text-xs bg-transparent outline-none focus:bg-[#fff3e0] focus:ring-1 focus:ring-[#ff9800] ${col.readOnly ? 'text-gray-500 bg-gray-50' : 'text-gray-800'}`}
+                                                  value={row[col.id] || ''}
+                                                  onChange={(e) => handleCellChange(i, col.id, e.target.value)}
+                                              />
+                                          )}
+                                      </td>
+                                  ))}
+
+                                  <td className="p-2 border border-gray-300 text-center">
+                                      <button 
+                                        onClick={() => window.open(`/pm/project/${row.id}`, '_blank')}
+                                        className="text-[#1c8ccc] hover:text-[#1565c0] font-bold text-xs hover:underline flex items-center justify-center w-full"
+                                      >
+                                          Dashboard <ExternalLink className="w-3 h-3 ml-1" />
+                                      </button>
+                                  </td>
+                              </tr>
+                          ))}
+                      </tbody>
+                  </table>
+              </div>
+          </div>
+
+          {/* FAB */}
+          <button 
+              onClick={addNewRow}
+              className="fixed bottom-8 right-8 w-14 h-14 bg-[#1c8ccc] hover:bg-[#1565c0] text-white rounded-full shadow-2xl flex items-center justify-center text-3xl transition-all z-50 hover:scale-110"
+              title="Add Project Row"
+          >
+              <Plus className="w-6 h-6" />
+          </button>
       </div>
-
-      {/* Project List */}
-      <div className="space-y-4">
-        {boms.length === 0 ? (
-            <div className="text-center py-24 bg-white/5 rounded-3xl border border-white/10 border-dashed">
-                <UploadCloud className="w-16 h-16 mx-auto mb-4 text-zinc-700" />
-                <p className="text-zinc-400 text-xl">No active projects.</p>
-                <p className="text-zinc-600 text-sm mt-2">Upload an Excel file to start.</p>
-            </div>
-        ) : (
-            boms.map((bom) => (
-                <motion.div 
-                    key={bom.id} 
-                    initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
-                    className="bg-white/5 border border-white/10 rounded-3xl p-8 hover:bg-white/10 transition-all group relative backdrop-blur-md"
-                >
-                    <div className="flex flex-col md:flex-row justify-between items-start gap-6">
-                        <div className="flex-1">
-                            <div className="flex flex-wrap gap-3 mb-4">
-                                <span className="px-3 py-1 bg-purple-500/10 text-purple-300 rounded-lg text-xs font-bold border border-purple-500/20">{bom.projectCode}</span>
-                                <span className="px-3 py-1 bg-blue-500/10 text-blue-300 rounded-lg text-xs font-bold border border-blue-500/20">{bom.customer}</span>
-                            </div>
-                            <h3 className="text-2xl font-light text-white mb-2">{bom.projectDescription}</h3>
-                            
-                            <div className="grid grid-cols-4 gap-6 mt-6">
-                                <div className="bg-black/20 p-3 rounded-xl border border-white/5">
-                                    <p className="text-[10px] text-zinc-500 uppercase font-bold">Molds</p>
-                                    <p className="text-white font-mono">{bom.totalMolds}</p>
-                                </div>
-                                <div className="bg-black/20 p-3 rounded-xl border border-white/5">
-                                    <p className="text-[10px] text-zinc-500 uppercase font-bold">Target</p>
-                                    <p className="text-white font-mono">{bom.targetPartsCompletion}</p>
-                                </div>
-                                <div className="bg-black/20 p-3 rounded-xl border border-white/5">
-                                    <p className="text-[10px] text-zinc-500 uppercase font-bold">Area</p>
-                                    <p className="text-white font-mono">{bom.sqmPerPart || 0} m²</p>
-                                </div>
-                                <div className="bg-black/20 p-3 rounded-xl border border-white/5">
-                                    <p className="text-[10px] text-zinc-500 uppercase font-bold">Gelcoat</p>
-                                    <p className="text-green-400 font-mono">{getGelcoat(bom)} kg</p>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div className="flex flex-col items-end gap-3">
-                            <button onClick={() => setSelectedBOM(bom)} className="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-medium shadow-lg flex items-center gap-2 transition-all">
-                                <UserPlus className="w-4 h-4" /> Assign Work
-                            </button>
-                            <button onClick={() => deleteProject(bom.id)} className="p-3 text-zinc-500 hover:text-red-400 bg-white/5 hover:bg-red-500/10 rounded-xl transition-colors border border-white/5">
-                                <Trash2 className="w-5 h-5" />
-                            </button>
-                        </div>
-                    </div>
-                </motion.div>
-            ))
-        )}
-      </div>
-
-      {/* MANUAL CREATE MODAL */}
-      <AnimatePresence>
-        {showCreateModal && (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-                <div className="bg-zinc-900 border border-white/10 w-full max-w-lg rounded-3xl p-8 shadow-2xl relative overflow-hidden">
-                    <div className="flex justify-between items-center mb-6 relative z-10">
-                        <h2 className="text-2xl font-light text-white">Create New Project</h2>
-                        <button onClick={() => setShowCreateModal(false)}><XCircle className="w-6 h-6 text-zinc-500 hover:text-white"/></button>
-                    </div>
-                    <div className="space-y-4 relative z-10">
-                        <input className="w-full bg-zinc-800 border border-white/10 rounded-xl p-3 text-white outline-none focus:border-purple-500 transition-colors" placeholder="Project Code" onChange={e => setNewProjectForm({...newProjectForm, code: e.target.value})} />
-                        <input className="w-full bg-zinc-800 border border-white/10 rounded-xl p-3 text-white outline-none focus:border-purple-500 transition-colors" placeholder="Project Name" onChange={e => setNewProjectForm({...newProjectForm, name: e.target.value})} />
-                        <input className="w-full bg-zinc-800 border border-white/10 rounded-xl p-3 text-white outline-none focus:border-purple-500 transition-colors" placeholder="Client Name" onChange={e => setNewProjectForm({...newProjectForm, client: e.target.value})} />
-                        <div className="grid grid-cols-2 gap-4">
-                            <input type="number" className="w-full bg-zinc-800 border border-white/10 rounded-xl p-3 text-white outline-none focus:border-purple-500 transition-colors" placeholder="Molds" onChange={e => setNewProjectForm({...newProjectForm, molds: parseInt(e.target.value)})} />
-                            <input type="number" className="w-full bg-zinc-800 border border-white/10 rounded-xl p-3 text-white outline-none focus:border-purple-500 transition-colors" placeholder="Area (SQM)" onChange={e => setNewProjectForm({...newProjectForm, sqm: parseFloat(e.target.value)})} />
-                        </div>
-                    </div>
-                    <button onClick={handleCreateManual} className="w-full mt-8 bg-white text-black font-bold py-3 rounded-xl hover:bg-zinc-200 shadow-lg flex items-center justify-center gap-2">
-                        <CheckCircle className="w-5 h-5" /> Save Project
-                    </button>
-                </div>
-            </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Note: Assignment Modal code remains similar, focusing on Firebase/Service calls */}
     </div>
   );
 }
