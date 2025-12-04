@@ -68,16 +68,18 @@ export default function ProjectManagerDashboard() {
         const arrayBuffer = evt.target?.result;
         const wb = XLSX.read(arrayBuffer, { type: 'array' });
         const ws = wb.Sheets[wb.SheetNames[0]];
-        const rows: any[] = XLSX.utils.sheet_to_json(ws, { defval: null });
+        const rows: any[] = XLSX.utils.sheet_to_json(ws, { defval: '' });
 
-        console.log("Raw Excel Data:", rows); // Check console to see what keys are read!
+        console.log("Raw Excel Data:", rows);
 
         if (!rows || rows.length === 0) {
             alert("Excel file is empty or unreadable.");
             return;
         }
 
-        const promises = rows.map((row: any) => {
+        // Build optimistic items and upload promises
+        const optimisticItems: any[] = [];
+        const uploadPromises = rows.map((row: any) => {
             const pCode = row['Code'] || row['Project Code'] || row['Job No'] || `AUTO-${Math.floor(Math.random()*1000)}`;
             const pDesc = row['Description'] || row['Project Name'] || row['Desc'] || 'No Description';
             const pSQM = parseFloat(row['SQM'] || row['Area'] || row['Total SQM']) || 10;
@@ -95,25 +97,41 @@ export default function ProjectManagerDashboard() {
                 progress: 0,
                 materials: {
                     resinType: 'Standard',
-                    // Auto-Calc: 1.5kg Resin per SQM, 0.6kg Gelcoat per SQM
-                    gelcoatPerMold: parseFloat((pSQM * 0.6).toFixed(2)), 
+                    gelcoatPerMold: parseFloat((pSQM * 0.6).toFixed(2)),
                     resinPerMold: parseFloat((pSQM * 1.5).toFixed(2))
                 }
             };
 
-            // return the promise so we can await all
-            return addProjectToCloud(newProject).then(() => ({ ok: true })).catch((err) => ({ ok: false, err }));
+            const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
+            optimisticItems.push({ id: tempId, ...newProject });
+
+            return (async () => {
+              try {
+                const cloudId = await addProjectToCloud(newProject);
+                // Replace temp item id with cloud id when available
+                setBoms(prev => prev.map(p => p.id === tempId ? { ...p, id: cloudId } : p));
+                return { ok: true, cloudId };
+              } catch (err) {
+                console.error("Upload row error:", err);
+                // remove optimistic item on failure
+                setBoms(prev => prev.filter(p => p.id !== tempId));
+                return { ok: false, err };
+              }
+            })();
         });
 
-        const results = await Promise.allSettled(promises);
-        const successCount = results.filter(r => (r.status === 'fulfilled' && (r as any).value?.ok !== false) || (r.status === 'fulfilled')).length;
+        // Immediately show optimistic items in the UI
+        setBoms(prev => [...optimisticItems, ...prev]);
 
+        // Wait for all uploads to finish (some may fail)
+        const results = await Promise.allSettled(uploadPromises);
+        const successCount = results.filter(r => r.status === 'fulfilled' && (r as any).value?.ok).length;
         alert(`Upload finished. Projects attempted: ${rows.length}. Succeeded: ${successCount}.`);
       } catch (error) {
         console.error("Excel Error:", error);
         alert("Error reading Excel file. Check console for details.");
       } finally {
-        // Reset file input so same file can be re-picked if needed
+        // Reset file input
         if (e.target) e.target.value = "";
       }
     };
@@ -140,13 +158,21 @@ export default function ProjectManagerDashboard() {
         }
     };
 
+    // Optimistic UI: add temp item immediately
+    const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
+    const tempProject = { id: tempId, ...newProject };
+    setBoms(prev => [tempProject, ...prev]);
+
     try {
-      await addProjectToCloud(newProject);
+      const cloudId = await addProjectToCloud(newProject);
+      // replace temp id with cloud id
+      setBoms(prev => prev.map(p => p.id === tempId ? { ...p, id: cloudId } : p));
       setShowCreateModal(false);
-      // Real-time listener will pick up the new project; optionally notify user
       alert('Project created successfully.');
     } catch (err) {
       console.error('Create error', err);
+      // remove optimistic item on failure
+      setBoms(prev => prev.filter(p => p.id !== tempId));
       alert('Failed to create project. Check console.');
     }
   };
