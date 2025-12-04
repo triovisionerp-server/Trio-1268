@@ -70,71 +70,80 @@ export default function ProjectManagerDashboard() {
         const ws = wb.Sheets[wb.SheetNames[0]];
         const rows: any[] = XLSX.utils.sheet_to_json(ws, { defval: '' });
 
-        console.log("Raw Excel Data:", rows);
-
         if (!rows || rows.length === 0) {
-            alert("Excel file is empty or unreadable.");
-            return;
+          alert('Excel file is empty or unreadable.');
+          return;
         }
 
-        // Build optimistic items and upload promises
-        const optimisticItems: any[] = [];
-        const uploadPromises = rows.map((row: any) => {
-            const pCode = row['Code'] || row['Project Code'] || row['Job No'] || `AUTO-${Math.floor(Math.random()*1000)}`;
-            const pDesc = row['Description'] || row['Project Name'] || row['Desc'] || 'No Description';
-            const pSQM = parseFloat(row['SQM'] || row['Area'] || row['Total SQM']) || 10;
-            const pMolds = parseInt(row['Molds'] || row['Qty']) || 1;
+        // Build optimistic items
+        const optimisticItems = rows.map((row: any, i: number) => {
+          const pCode = row['Code'] || row['Project Code'] || row['Job No'] || `AUTO-${Math.floor(Math.random()*1000)}`;
+          const pDesc = row['Description'] || row['Project Name'] || row['Desc'] || 'No Description';
+          const pSQM = parseFloat(row['SQM'] || row['Area'] || row['Total SQM']) || 10;
+          const pMolds = parseInt(row['Molds'] || row['Qty']) || 1;
 
-            const newProject = {
-                projectCode: pCode,
-                projectDescription: pDesc,
-                customer: row['Customer'] || row['Client'] || 'General',
-                moldSeries: row['Series'] || '32',
-                totalMolds: pMolds,
-                targetPartsCompletion: parseInt(row['Target']) || 50,
-                sqmPerPart: pSQM,
-                status: 'Pending',
-                progress: 0,
-                materials: {
-                    resinType: 'Standard',
-                    gelcoatPerMold: parseFloat((pSQM * 0.6).toFixed(2)),
-                    resinPerMold: parseFloat((pSQM * 1.5).toFixed(2))
-                }
-            };
-
-            const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
-            optimisticItems.push({ id: tempId, ...newProject });
-
-            return (async () => {
-              try {
-                const cloudId = await addProjectToCloud(newProject);
-                // Replace temp item id with cloud id when available
-                setBoms(prev => prev.map(p => p.id === tempId ? { ...p, id: cloudId } : p));
-                return { ok: true, cloudId };
-              } catch (err) {
-                console.error("Upload row error:", err);
-                // remove optimistic item on failure
-                setBoms(prev => prev.filter(p => p.id !== tempId));
-                return { ok: false, err };
-              }
-            })();
+          const tempId = `temp-${Date.now()}-${i}-${Math.random().toString(36).slice(2,6)}`;
+          return {
+            id: tempId,
+            projectCode: pCode,
+            projectDescription: pDesc,
+            customer: row['Customer'] || row['Client'] || 'General',
+            moldSeries: row['Series'] || '32',
+            totalMolds: pMolds,
+            targetPartsCompletion: parseInt(row['Target']) || 50,
+            sqmPerPart: pSQM,
+            status: 'Pending',
+            progress: 0,
+            materials: {
+              resinType: 'Standard',
+              gelcoatPerMold: parseFloat((pSQM * 0.6).toFixed(2)),
+              resinPerMold: parseFloat((pSQM * 1.5).toFixed(2))
+            }
+          };
         });
 
-        // Immediately show optimistic items in the UI
+        // Show immediate UI feedback
         setBoms(prev => [...optimisticItems, ...prev]);
 
-        // Wait for all uploads to finish (some may fail)
-        const results = await Promise.allSettled(uploadPromises);
-        const successCount = results.filter(r => r.status === 'fulfilled' && (r as any).value?.ok).length;
-        alert(`Upload finished. Projects attempted: ${rows.length}. Succeeded: ${successCount}.`);
-      } catch (error) {
-        console.error("Excel Error:", error);
-        alert("Error reading Excel file. Check console for details.");
+        // Upload to cloud and reconcile ids
+        const uploadResults = await Promise.allSettled(rows.map(async (row: any, i: number) => {
+          const optimistic = optimisticItems[i];
+          const payload = {
+            projectCode: optimistic.projectCode,
+            projectDescription: optimistic.projectDescription,
+            customer: optimistic.customer,
+            moldSeries: optimistic.moldSeries,
+            totalMolds: optimistic.totalMolds,
+            targetPartsCompletion: optimistic.targetPartsCompletion,
+            sqmPerPart: optimistic.sqmPerPart,
+            status: optimistic.status,
+            progress: optimistic.progress,
+            materials: optimistic.materials
+          };
+
+          try {
+            const cloudId = await addProjectToCloud(payload);
+            // replace temp id with cloud id
+            setBoms(prev => prev.map(p => p.id === optimistic.id ? { ...p, id: cloudId } : p));
+            return { ok: true };
+          } catch (err) {
+            console.error('Upload row error:', err);
+            // remove optimistic row on failure
+            setBoms(prev => prev.filter p => p.id !== optimistic.id));
+            return { ok: false };
+          }
+        }));
+
+        const succeeded = uploadResults.filter(r => r.status === 'fulfilled' && (r as any).value?.ok !== false).length;
+        alert(`Upload finished. Projects attempted: ${rows.length}. Succeeded: ${succeeded}.`);
+      } catch (err) {
+        console.error('Excel Error:', err);
+        alert('Error reading Excel file. Check console for details.');
       } finally {
-        // Reset file input
-        if (e.target) e.target.value = "";
+        if (e.target) e.target.value = '';
       }
     };
+
     reader.readAsArrayBuffer(file);
   };
 
