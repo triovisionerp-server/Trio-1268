@@ -5,18 +5,23 @@ import {
   Factory, Users, TrendingUp, TrendingDown, Calendar, BarChart3, 
   ArrowRight, Activity, CheckCircle, AlertTriangle, Clock,
   X, Cog, Building2, Warehouse, Bell, Package, Phone, Mail,
-  MapPin, FileText, ShoppingCart, User, Building
+  MapPin, FileText, ShoppingCart, User, Building, Eye, Boxes
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { db } from '@/lib/firebase/client';
-import { collection, query, where, onSnapshot, doc, updateDoc } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, updateDoc, orderBy, getDocs, limit } from 'firebase/firestore';
 import { COLLECTIONS, MD_APPROVAL_THRESHOLD } from '@/types/purchase';
 import type { PurchaseOrder } from '@/types/purchase';
+import type { DailyStockRecord } from '@/types/inventory';
 import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from "recharts";
+
+// Firebase Collections
+const FB_MATERIALS = 'inventory_materials';
+const FB_DAILY_STOCK = 'daily_stock_records';
 
 // ═══════════════════════════════════════════════════════════════
 // ANIMATION VARIANTS
@@ -168,6 +173,11 @@ export default function MDDashboard() {
   const [selectedOrder, setSelectedOrder] = useState<PurchaseOrder | null>(null);
   const [showOrderDetails, setShowOrderDetails] = useState(false);
   
+  // Inventory Overview States
+  const [showInventoryPanel, setShowInventoryPanel] = useState(false);
+  const [inventoryMaterials, setInventoryMaterials] = useState<{id: string; name?: string; current_stock?: number; min_stock?: number; supplier_name?: string; category?: string; unit?: string;}[]>([]);
+  const [latestDailyStock, setLatestDailyStock] = useState<DailyStockRecord | null>(null);
+  
   // Approval action states
   const [isApproving, setIsApproving] = useState(false);
   const [isRejecting, setIsRejecting] = useState(false);
@@ -202,6 +212,41 @@ export default function MDDashboard() {
     });
 
     return () => unsubscribe();
+  }, []);
+
+  // Fetch inventory materials
+  useEffect(() => {
+    const unsubscribe = onSnapshot(collection(db, FB_MATERIALS), (snapshot) => {
+      const materials: {id: string; name?: string; current_stock?: number; min_stock?: number; supplier_name?: string; category?: string; unit?: string;}[] = [];
+      snapshot.forEach((doc) => {
+        materials.push({ id: doc.id, ...doc.data() } as {id: string; name?: string; current_stock?: number; min_stock?: number; supplier_name?: string; category?: string; unit?: string;});
+      });
+      setInventoryMaterials(materials);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  // Fetch latest daily stock record
+  useEffect(() => {
+    const fetchLatestDailyStock = async () => {
+      try {
+        const q = query(
+          collection(db, FB_DAILY_STOCK),
+          orderBy('date', 'desc'),
+          limit(1)
+        );
+        const snapshot = await getDocs(q);
+        if (!snapshot.empty) {
+          const doc = snapshot.docs[0];
+          setLatestDailyStock({ id: doc.id, ...doc.data() } as DailyStockRecord);
+        }
+      } catch (error) {
+        console.error('Error fetching daily stock:', error);
+      }
+    };
+    
+    fetchLatestDailyStock();
   }, []);
 
   // Handle opening order details
@@ -333,6 +378,32 @@ export default function MDDashboard() {
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
           >
+            {/* Inventory Overview Button */}
+            <motion.button
+              onClick={() => setShowInventoryPanel(!showInventoryPanel)}
+              className={`relative flex items-center gap-2 px-4 py-2.5 rounded-2xl transition-all duration-300 ${
+                showInventoryPanel 
+                  ? 'bg-emerald-500/20 border border-emerald-500/40' 
+                  : 'bg-white/5 border border-white/10 hover:border-white/20'
+              }`}
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+            >
+              <Boxes className={`w-5 h-5 ${showInventoryPanel ? 'text-emerald-400' : 'text-zinc-400'}`} />
+              <span className={`text-sm font-medium ${showInventoryPanel ? 'text-emerald-400' : 'text-zinc-300'}`}>
+                Inventory
+              </span>
+              {inventoryMaterials.filter(m => (m.current_stock || 0) <= (m.min_stock || 0) && (m.current_stock || 0) > 0).length > 0 && (
+                <motion.span
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  className="absolute -top-1 -right-1 w-5 h-5 bg-amber-500 rounded-full flex items-center justify-center text-[10px] font-bold text-white"
+                >
+                  {inventoryMaterials.filter(m => (m.current_stock || 0) <= (m.min_stock || 0) && (m.current_stock || 0) > 0).length}
+                </motion.span>
+              )}
+            </motion.button>
+            
             {/* Notification Toggle Button */}
             <motion.button
               onClick={() => setShowNotifications(!showNotifications)}
@@ -358,6 +429,140 @@ export default function MDDashboard() {
                 </motion.span>
               )}
             </motion.button>
+
+            {/* Inventory Panel Dropdown */}
+            <AnimatePresence>
+              {showInventoryPanel && (
+                <motion.div
+                  variants={notificationPanelVariants}
+                  initial="hidden"
+                  animate="visible"
+                  exit="exit"
+                  className="absolute top-full right-28 mt-2 w-[500px] max-h-[600px] overflow-hidden rounded-2xl bg-zinc-900/95 backdrop-blur-xl border border-white/10 shadow-2xl z-50"
+                >
+                  <div className="p-4 border-b border-white/10 bg-gradient-to-r from-emerald-900/30 to-transparent">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                        <Boxes className="w-5 h-5 text-emerald-400" />
+                        Inventory Overview
+                      </h3>
+                      <Link
+                        href="/store"
+                        className="px-3 py-1.5 bg-emerald-500/20 text-emerald-400 text-xs font-medium rounded-lg hover:bg-emerald-500/30 transition-colors flex items-center gap-1"
+                      >
+                        <Eye className="w-3 h-3" />
+                        Full View
+                      </Link>
+                    </div>
+                    <p className="text-xs text-zinc-500 mt-1">Real-time stock status from warehouse</p>
+                  </div>
+                  
+                  {/* Summary Stats */}
+                  <div className="p-4 grid grid-cols-4 gap-2 border-b border-white/5">
+                    <div className="text-center p-2 rounded-lg bg-white/5">
+                      <div className="text-2xl font-bold text-white">{inventoryMaterials.length}</div>
+                      <div className="text-[10px] text-zinc-500">Total Items</div>
+                    </div>
+                    <div className="text-center p-2 rounded-lg bg-emerald-500/10">
+                      <div className="text-2xl font-bold text-emerald-400">
+                        {inventoryMaterials.filter(m => (m.current_stock || 0) > (m.min_stock || 0)).length}
+                      </div>
+                      <div className="text-[10px] text-emerald-500">In Stock</div>
+                    </div>
+                    <div className="text-center p-2 rounded-lg bg-amber-500/10">
+                      <div className="text-2xl font-bold text-amber-400">
+                        {inventoryMaterials.filter(m => (m.current_stock || 0) <= (m.min_stock || 0) && (m.current_stock || 0) > 0).length}
+                      </div>
+                      <div className="text-[10px] text-amber-500">Low Stock</div>
+                    </div>
+                    <div className="text-center p-2 rounded-lg bg-red-500/10">
+                      <div className="text-2xl font-bold text-red-400">
+                        {inventoryMaterials.filter(m => (m.current_stock || 0) === 0).length}
+                      </div>
+                      <div className="text-[10px] text-red-500">Out of Stock</div>
+                    </div>
+                  </div>
+
+                  {/* Latest Daily Stock Info */}
+                  {latestDailyStock && (
+                    <div className="p-4 border-b border-white/5 bg-indigo-500/5">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Calendar className="w-4 h-4 text-indigo-400" />
+                          <span className="text-sm text-white font-medium">Latest Stock Record</span>
+                        </div>
+                        <span className="text-xs text-zinc-400">
+                          {new Date(latestDailyStock.date).toLocaleDateString('en-US', {
+                            weekday: 'short',
+                            month: 'short',
+                            day: 'numeric'
+                          })}
+                        </span>
+                      </div>
+                      <div className="mt-2 grid grid-cols-3 gap-2 text-xs">
+                        <div className="text-zinc-400">
+                          Value: <span className="text-emerald-400 font-medium">₹{latestDailyStock.summary.totalStockValue.toLocaleString()}</span>
+                        </div>
+                        <div className="text-zinc-400">
+                          Inward: <span className="text-cyan-400 font-medium">{latestDailyStock.summary.totalInward}</span>
+                        </div>
+                        <div className="text-zinc-400">
+                          Issued: <span className="text-amber-400 font-medium">{latestDailyStock.summary.totalIssued}</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Critical Items List */}
+                  <div className="max-h-[300px] overflow-y-auto">
+                    <div className="p-3 border-b border-white/5 sticky top-0 bg-zinc-900/95">
+                      <span className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Critical Stock Items</span>
+                    </div>
+                    {inventoryMaterials
+                      .filter(m => (m.current_stock || 0) <= (m.min_stock || 0))
+                      .sort((a, b) => (a.current_stock || 0) - (b.current_stock || 0))
+                      .slice(0, 10)
+                      .map((material) => (
+                        <div
+                          key={material.id}
+                          className="p-3 border-b border-white/5 hover:bg-white/5 transition-colors"
+                        >
+                          <div className="flex items-start justify-between">
+                            <div>
+                              <div className="font-medium text-white text-sm">{material.name}</div>
+                              <div className="text-xs text-zinc-500 mt-0.5">
+                                {material.supplier_name || 'No supplier'} • {material.category || 'Raw Material'}
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <div className={`text-sm font-bold ${
+                                (material.current_stock || 0) === 0 ? 'text-red-400' : 'text-amber-400'
+                              }`}>
+                                {material.current_stock || 0} {material.unit}
+                              </div>
+                              <div className="text-[10px] text-zinc-500">
+                                Min: {material.min_stock || 0}
+                              </div>
+                            </div>
+                          </div>
+                          {(material.current_stock || 0) === 0 && (
+                            <div className="mt-2 flex items-center gap-2">
+                              <AlertTriangle className="w-3 h-3 text-red-400" />
+                              <span className="text-xs text-red-400">Immediate purchase required</span>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    {inventoryMaterials.filter(m => (m.current_stock || 0) <= (m.min_stock || 0)).length === 0 && (
+                      <div className="p-8 text-center">
+                        <CheckCircle className="w-10 h-10 text-emerald-400 mx-auto mb-2" />
+                        <p className="text-zinc-400">All items are well stocked</p>
+                      </div>
+                    )}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
 
             {/* Notification Panel Dropdown */}
             <AnimatePresence>

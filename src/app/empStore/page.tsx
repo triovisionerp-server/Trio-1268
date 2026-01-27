@@ -4,16 +4,19 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import {
   Plus, X, Download, Edit2, Trash2, Package,
   Building2, BarChart3, AlertTriangle, DollarSign, Search,
-  History, Clock, CheckCircle2, RefreshCw, FolderKanban
+  History, Clock, CheckCircle2, RefreshCw, FolderKanban,
+  Calendar, Save, Lock, ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import * as XLSX from 'xlsx';
 import { db } from '@/lib/firebase';
-import { doc, writeBatch } from 'firebase/firestore';
+import { doc, writeBatch, collection, addDoc, getDocs, query, orderBy } from 'firebase/firestore';
+import type { DailyStockRecord, DailyMaterialStock } from '@/types/inventory';
 
 // Firebase Collection Names (shared with Purchase/Store pages)
 const FB_MATERIALS = 'inventory_materials';
 const FB_SUPPLIERS = 'inventory_suppliers';
+const FB_DAILY_STOCK = 'daily_stock_records';
 
 // --- Types ---
 type Category = 'Raw Material' | 'Consumable' | 'Tool' | 'Safety Equipment';
@@ -301,13 +304,20 @@ const SAMPLE_MATERIALS: StockItem[] = [
 const EmployeeStore = () => {
   // --- State ---
   const isDarkMode = true; // Always dark theme
-  const [activeTab, setActiveTab] = useState<'stock-updates' | 'materials' | 'suppliers' | 'analytics' | 'audit'>('stock-updates');
+  const [activeTab, setActiveTab] = useState<'daily-stock' | 'stock-updates' | 'materials' | 'suppliers' | 'analytics' | 'audit'>('daily-stock');
   
   // Data State
   const [stockItems, setStockItems] = useState<StockItem[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+  
+  // Daily Stock State
+  const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [dailyStockHistory, setDailyStockHistory] = useState<DailyStockRecord[]>([]);
+  const [isSavingDaily, setIsSavingDaily] = useState(false);
+  const [dailyStockNotes, setDailyStockNotes] = useState('');
+  const [todayRecord, setTodayRecord] = useState<DailyStockRecord | null>(null);
   
   // Loading & Export State
   const [isLoading, setIsLoading] = useState(true);
@@ -455,6 +465,174 @@ const EmployeeStore = () => {
       return false;
     }
   }, [stockItems, suppliers, calculateClosingStock]);
+
+  // ═══════════════════════════════════════════════════════════════
+  // DAILY STOCK FUNCTIONS
+  // ═══════════════════════════════════════════════════════════════
+  
+  // Load daily stock history from Firebase
+  const loadDailyStockHistory = useCallback(async () => {
+    try {
+      const q = query(
+        collection(db, FB_DAILY_STOCK),
+        orderBy('date', 'desc')
+      );
+      const snapshot = await getDocs(q);
+      const records: DailyStockRecord[] = [];
+      snapshot.forEach((doc) => {
+        records.push({ id: doc.id, ...doc.data() } as DailyStockRecord);
+      });
+      setDailyStockHistory(records);
+      
+      // Check if today's record exists
+      const today = new Date().toISOString().split('T')[0];
+      const todaysRecord = records.find(r => r.date === today);
+      if (todaysRecord) {
+        setTodayRecord(todaysRecord);
+      }
+    } catch (error) {
+      console.error('Error loading daily stock history:', error);
+    }
+  }, []);
+
+  // Load daily stock history on mount
+  useEffect(() => {
+    if (!isLoading) {
+      loadDailyStockHistory();
+    }
+  }, [isLoading, loadDailyStockHistory]);
+
+  // Calculate total project issues for an item
+  const getTotalProjectIssues = useCallback((item: StockItem): number => {
+    if (!item.projects) return 0;
+    return Object.values(item.projects).reduce((sum, val) => sum + (val || 0), 0);
+  }, []);
+
+  // Generate daily stock record from current data
+  const generateDailyStockRecord = useCallback((): Omit<DailyStockRecord, 'id'> => {
+    const today = selectedDate;
+    
+    const materials: DailyMaterialStock[] = stockItems.map(item => {
+      const closingStock = calculateClosingStock(item);
+      return {
+        materialId: item.id,
+        materialCode: item.code,
+        materialName: item.materialName,
+        category: item.category || 'Raw Material',
+        supplierName: item.supplierName,
+        uom: item.uom,
+        rate: item.rate,
+        openingStock: item.openingStock,
+        inward: item.inword || 0,
+        projectIssues: getTotalProjectIssues(item),
+        rdUsage: item.rdUsage || 0,
+        internalUsage: item.internalUsage || 0,
+        newFactoryUsage: item.newFactoryUsage || 0,
+        closingStock: closingStock,
+        minStock: item.minStock || 0,
+        stockValue: closingStock * item.rate
+      };
+    });
+
+    const summary = {
+      totalMaterials: materials.length,
+      totalStockValue: materials.reduce((sum, m) => sum + m.stockValue, 0),
+      lowStockCount: materials.filter(m => m.closingStock > 0 && m.closingStock <= m.minStock).length,
+      outOfStockCount: materials.filter(m => m.closingStock === 0).length,
+      totalInward: materials.reduce((sum, m) => sum + m.inward, 0),
+      totalIssued: materials.reduce((sum, m) => sum + m.projectIssues + m.rdUsage + m.internalUsage + m.newFactoryUsage, 0)
+    };
+
+    return {
+      date: today,
+      materials,
+      summary,
+      savedBy: 'Store Manager',
+      savedAt: new Date().toISOString(),
+      status: 'saved',
+      notes: dailyStockNotes
+    };
+  }, [stockItems, selectedDate, calculateClosingStock, getTotalProjectIssues, dailyStockNotes]);
+
+  // Save daily stock record to Firebase
+  const saveDailyStock = useCallback(async () => {
+    setIsSavingDaily(true);
+    try {
+      const record = generateDailyStockRecord();
+      
+      // Check if record for this date already exists
+      const existingRecord = dailyStockHistory.find(r => r.date === selectedDate);
+      
+      if (existingRecord && existingRecord.status === 'locked') {
+        showToast('This day\'s record is locked and cannot be modified', 'error');
+        return;
+      }
+
+      // Add to Firebase
+      const docRef = await addDoc(collection(db, FB_DAILY_STOCK), record);
+      
+      // Also sync materials to Firebase
+      await syncToFirebase();
+      
+      showToast(`Daily stock for ${selectedDate} saved successfully!`, 'success');
+      logAudit('CREATE', 'Stock', selectedDate, `Saved daily stock record for ${selectedDate}`);
+      
+      // Reload history
+      await loadDailyStockHistory();
+      
+      // Update today's record if saved for today
+      if (selectedDate === new Date().toISOString().split('T')[0]) {
+        setTodayRecord({ id: docRef.id, ...record } as DailyStockRecord);
+      }
+    } catch (error) {
+      console.error('Error saving daily stock:', error);
+      showToast('Failed to save daily stock', 'error');
+    } finally {
+      setIsSavingDaily(false);
+    }
+  }, [generateDailyStockRecord, selectedDate, dailyStockHistory, syncToFirebase, loadDailyStockHistory, logAudit]);
+
+  // Navigate date
+  const navigateDate = useCallback((direction: 'prev' | 'next') => {
+    const current = new Date(selectedDate);
+    if (direction === 'prev') {
+      current.setDate(current.getDate() - 1);
+    } else {
+      current.setDate(current.getDate() + 1);
+    }
+    setSelectedDate(current.toISOString().split('T')[0]);
+  }, [selectedDate]);
+
+  // Set opening stock from previous day's closing
+  const setOpeningFromPreviousDay = useCallback(() => {
+    const prevDate = new Date(selectedDate);
+    prevDate.setDate(prevDate.getDate() - 1);
+    const prevDateStr = prevDate.toISOString().split('T')[0];
+    
+    const prevRecord = dailyStockHistory.find(r => r.date === prevDateStr);
+    
+    if (prevRecord) {
+      setStockItems(items => items.map(item => {
+        const prevMaterial = prevRecord.materials.find(m => m.materialId === item.id);
+        if (prevMaterial) {
+          return {
+            ...item,
+            openingStock: prevMaterial.closingStock,
+            inword: 0,
+            projects: {},
+            rdUsage: 0,
+            internalUsage: 0,
+            newFactoryUsage: 0
+          };
+        }
+        return item;
+      }));
+      showToast(`Opening stock set from ${prevDateStr}`, 'success');
+      logAudit('UPDATE', 'Stock', 'Opening Stock', `Set opening stock from previous day (${prevDateStr})`);
+    } else {
+      showToast('No record found for previous day', 'error');
+    }
+  }, [selectedDate, dailyStockHistory, logAudit]);
 
   // Auto-sync to Firebase when data changes (debounced)
   const syncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -829,7 +1007,8 @@ const EmployeeStore = () => {
       <div className="sticky top-14 z-30 bg-zinc-900/90 backdrop-blur-md border-b border-zinc-800/50">
         <div className="max-w-full px-4 flex gap-0.5 overflow-x-auto scrollbar-hide">
           {[
-            { id: 'stock-updates', label: 'Stock', icon: Package },
+            { id: 'daily-stock', label: 'Daily Stock', icon: Calendar },
+            { id: 'stock-updates', label: 'Stock Entry', icon: Package },
             { id: 'materials', label: 'Materials', icon: Package },
             { id: 'suppliers', label: 'Suppliers', icon: Building2 },
             { id: 'analytics', label: 'Analytics', icon: BarChart3 },
@@ -846,6 +1025,11 @@ const EmployeeStore = () => {
             >
               <tab.icon className="w-4 h-4" />
               {tab.label}
+              {tab.id === 'daily-stock' && todayRecord && (
+                <span className="px-1.5 py-0.5 text-[10px] font-semibold rounded-full bg-emerald-500/20 text-emerald-400">
+                  ✓
+                </span>
+              )}
               {tab.id === 'audit' && auditLogs.length > 0 && (
                 <span className="px-1.5 py-0.5 text-[10px] font-semibold rounded-full bg-indigo-500/20 text-indigo-400">
                   {auditLogs.length}
@@ -867,6 +1051,286 @@ const EmployeeStore = () => {
       {/* --- Main Content --- */}
       <div className="max-w-full px-4 py-5 relative z-10">
         
+        {/* ═══════════════════════════════════════════════════════════════ */}
+        {/* --- Tab: Daily Stock (Opening/Closing with Save) --- */}
+        {/* ═══════════════════════════════════════════════════════════════ */}
+        {activeTab === 'daily-stock' && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="space-y-4"
+          >
+            {/* Header with Date Navigation */}
+            <div className="bg-gradient-to-r from-indigo-900/30 via-purple-900/20 to-cyan-900/30 border border-indigo-500/30 rounded-2xl p-5">
+              <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                <div>
+                  <h2 className="text-xl font-semibold text-white flex items-center gap-2">
+                    <Calendar className="w-5 h-5 text-indigo-400" />
+                    Daily Stock Register
+                  </h2>
+                  <p className="text-zinc-400 text-sm mt-1">
+                    Track opening & closing stock with daily snapshots
+                  </p>
+                </div>
+                
+                {/* Date Navigation */}
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => navigateDate('prev')}
+                    className="p-2 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-400 hover:text-white hover:border-zinc-600 transition-all"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  
+                  <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-zinc-800/80 border border-zinc-700">
+                    <Calendar className="w-4 h-4 text-cyan-400" />
+                    <input
+                      type="date"
+                      value={selectedDate}
+                      onChange={(e) => setSelectedDate(e.target.value)}
+                      className="bg-transparent border-none outline-none text-white font-medium"
+                    />
+                  </div>
+                  
+                  <button
+                    onClick={() => navigateDate('next')}
+                    disabled={selectedDate === new Date().toISOString().split('T')[0]}
+                    className="p-2 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-400 hover:text-white hover:border-zinc-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                  
+                  <button
+                    onClick={() => setSelectedDate(new Date().toISOString().split('T')[0])}
+                    className="px-3 py-2 rounded-lg bg-cyan-500/20 border border-cyan-500/30 text-cyan-400 text-sm font-medium hover:bg-cyan-500/30 transition-all"
+                  >
+                    Today
+                  </button>
+                </div>
+              </div>
+
+              {/* Quick Actions */}
+              <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-white/10">
+                <button
+                  onClick={setOpeningFromPreviousDay}
+                  className="px-4 py-2 rounded-lg bg-amber-500/20 border border-amber-500/30 text-amber-400 text-sm font-medium flex items-center gap-2 hover:bg-amber-500/30 transition-all"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  Set Opening from Previous Day
+                </button>
+                
+                <button
+                  onClick={() => exportToExcel('stock')}
+                  className="px-4 py-2 rounded-lg bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 text-sm font-medium flex items-center gap-2 hover:bg-emerald-500/30 transition-all"
+                >
+                  <Download className="w-4 h-4" />
+                  Export Excel
+                </button>
+              </div>
+            </div>
+
+            {/* Summary Cards */}
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+              <div className="bg-zinc-900/80 border border-zinc-800 rounded-xl p-4">
+                <div className="text-zinc-500 text-xs mb-1">Total Materials</div>
+                <div className="text-2xl font-bold text-white">{stockItems.length}</div>
+              </div>
+              <div className="bg-zinc-900/80 border border-emerald-900/50 rounded-xl p-4">
+                <div className="text-emerald-500 text-xs mb-1">Total Inward</div>
+                <div className="text-2xl font-bold text-emerald-400">
+                  {stockItems.reduce((sum, item) => sum + (item.inword || 0), 0)}
+                </div>
+              </div>
+              <div className="bg-zinc-900/80 border border-amber-900/50 rounded-xl p-4">
+                <div className="text-amber-500 text-xs mb-1">Total Issued</div>
+                <div className="text-2xl font-bold text-amber-400">
+                  {stockItems.reduce((sum, item) => {
+                    const projectIssues = Object.values(item.projects || {}).reduce((s, v) => s + (v || 0), 0);
+                    return sum + projectIssues + (item.rdUsage || 0) + (item.internalUsage || 0) + (item.newFactoryUsage || 0);
+                  }, 0)}
+                </div>
+              </div>
+              <div className="bg-zinc-900/80 border border-indigo-900/50 rounded-xl p-4">
+                <div className="text-indigo-500 text-xs mb-1">Stock Value</div>
+                <div className="text-xl font-bold text-indigo-400">
+                  ₹{stats.totalValue.toLocaleString()}
+                </div>
+              </div>
+              <div className="bg-zinc-900/80 border border-yellow-900/50 rounded-xl p-4">
+                <div className="text-yellow-500 text-xs mb-1">Low Stock</div>
+                <div className="text-2xl font-bold text-yellow-400">{stats.lowStock}</div>
+              </div>
+              <div className="bg-zinc-900/80 border border-red-900/50 rounded-xl p-4">
+                <div className="text-red-500 text-xs mb-1">Out of Stock</div>
+                <div className="text-2xl font-bold text-red-400">{stats.outOfStock}</div>
+              </div>
+            </div>
+
+            {/* Daily Stock Table */}
+            <div className="bg-zinc-900/80 border border-zinc-800 rounded-xl overflow-hidden">
+              <div className="overflow-x-auto max-h-[55vh]">
+                <table className="w-full text-xs">
+                  <thead className="sticky top-0 z-10 bg-zinc-800">
+                    <tr>
+                      <th className="border border-zinc-700 px-3 py-2 text-left text-zinc-400 font-semibold">S.No</th>
+                      <th className="border border-zinc-700 px-3 py-2 text-left text-zinc-400 font-semibold min-w-[200px]">Material Name</th>
+                      <th className="border border-zinc-700 px-3 py-2 text-left text-zinc-400 font-semibold">Category</th>
+                      <th className="border border-zinc-700 px-3 py-2 text-left text-zinc-400 font-semibold">UOM</th>
+                      <th className="border border-zinc-700 px-3 py-2 text-center text-cyan-400 font-bold bg-cyan-900/20">Opening</th>
+                      <th className="border border-zinc-700 px-3 py-2 text-center text-emerald-400 font-bold bg-emerald-900/20">Inward (+)</th>
+                      <th className="border border-zinc-700 px-3 py-2 text-center text-amber-400 font-bold bg-amber-900/20">Issued (-)</th>
+                      <th className="border border-zinc-700 px-3 py-2 text-center text-indigo-300 font-bold bg-indigo-900/30">Closing</th>
+                      <th className="border border-zinc-700 px-3 py-2 text-center text-zinc-400 font-semibold">Min Stock</th>
+                      <th className="border border-zinc-700 px-3 py-2 text-center text-zinc-400 font-semibold">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredMaterials.map((item, index) => {
+                      const closing = calculateClosingStock(item);
+                      const totalIssued = getTotalProjectIssues(item) + (item.rdUsage || 0) + (item.internalUsage || 0) + (item.newFactoryUsage || 0);
+                      const isLowStock = closing > 0 && closing <= (item.minStock || 0);
+                      const isOutOfStock = closing === 0;
+                      
+                      return (
+                        <tr 
+                          key={item.id}
+                          className={`hover:bg-zinc-800/50 ${index % 2 === 0 ? 'bg-zinc-900/50' : 'bg-zinc-900/30'}`}
+                        >
+                          <td className="border border-zinc-800 px-3 py-2 text-center text-zinc-500">{index + 1}</td>
+                          <td className="border border-zinc-800 px-3 py-2 text-white font-medium">{item.materialName}</td>
+                          <td className="border border-zinc-800 px-3 py-2 text-zinc-400">{item.category || '-'}</td>
+                          <td className="border border-zinc-800 px-3 py-2 text-center text-zinc-400">{item.uom}</td>
+                          <td className="border border-zinc-800 px-3 py-2 text-center text-cyan-400 bg-cyan-900/10 font-medium">{item.openingStock}</td>
+                          <td className="border border-zinc-800 px-3 py-2 text-center text-emerald-400 bg-emerald-900/10 font-medium">{item.inword || 0}</td>
+                          <td className="border border-zinc-800 px-3 py-2 text-center text-amber-400 bg-amber-900/10 font-medium">{totalIssued}</td>
+                          <td className={`border border-zinc-800 px-3 py-2 text-center font-bold ${
+                            isOutOfStock ? 'bg-red-900/30 text-red-400' :
+                            isLowStock ? 'bg-yellow-900/30 text-yellow-400' :
+                            'bg-indigo-900/20 text-indigo-300'
+                          }`}>{closing}</td>
+                          <td className="border border-zinc-800 px-3 py-2 text-center text-zinc-500">{item.minStock || 0}</td>
+                          <td className="border border-zinc-800 px-3 py-2 text-center">
+                            {isOutOfStock ? (
+                              <span className="px-2 py-0.5 rounded-full bg-red-500/20 text-red-400 text-[10px] font-medium">OUT</span>
+                            ) : isLowStock ? (
+                              <span className="px-2 py-0.5 rounded-full bg-yellow-500/20 text-yellow-400 text-[10px] font-medium">LOW</span>
+                            ) : (
+                              <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 text-[10px] font-medium">OK</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Save Section */}
+            <div className="bg-gradient-to-r from-emerald-900/30 via-green-900/20 to-teal-900/30 border border-emerald-500/30 rounded-2xl p-5">
+              <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                <div className="flex-1">
+                  <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                    <Save className="w-5 h-5 text-emerald-400" />
+                    Save Daily Stock Record
+                  </h3>
+                  <p className="text-zinc-400 text-sm mt-1">
+                    Save today&apos;s opening and closing stock as a permanent record
+                  </p>
+                  
+                  {/* Notes input */}
+                  <div className="mt-3">
+                    <input
+                      type="text"
+                      placeholder="Add notes for this day (optional)..."
+                      value={dailyStockNotes}
+                      onChange={(e) => setDailyStockNotes(e.target.value)}
+                      className="w-full px-4 py-2 rounded-lg bg-zinc-800/80 border border-zinc-700 text-white placeholder-zinc-500 outline-none focus:border-emerald-500 transition-all"
+                    />
+                  </div>
+                </div>
+                
+                <div className="flex flex-col gap-2">
+                  {todayRecord && selectedDate === new Date().toISOString().split('T')[0] && (
+                    <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-500/20 border border-emerald-500/30">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                      <span className="text-emerald-400 text-sm">Saved at {new Date(todayRecord.savedAt).toLocaleTimeString()}</span>
+                    </div>
+                  )}
+                  
+                  <button
+                    onClick={saveDailyStock}
+                    disabled={isSavingDaily}
+                    className="px-6 py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-green-500 text-white font-semibold flex items-center gap-2 hover:from-emerald-600 hover:to-green-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-emerald-500/25"
+                  >
+                    {isSavingDaily ? (
+                      <>
+                        <RefreshCw className="w-5 h-5 animate-spin" />
+                        Saving...
+                      </>
+                    ) : (
+                      <>
+                        <Save className="w-5 h-5" />
+                        Save Daily Stock
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Stock History */}
+            {dailyStockHistory.length > 0 && (
+              <div className="bg-zinc-900/80 border border-zinc-800 rounded-xl p-5">
+                <h3 className="text-lg font-semibold text-white flex items-center gap-2 mb-4">
+                  <History className="w-5 h-5 text-purple-400" />
+                  Recent Stock Records
+                </h3>
+                <div className="space-y-2">
+                  {dailyStockHistory.slice(0, 7).map((record) => (
+                    <div
+                      key={record.id}
+                      onClick={() => setSelectedDate(record.date)}
+                      className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-all ${
+                        selectedDate === record.date
+                          ? 'bg-indigo-500/20 border border-indigo-500/40'
+                          : 'bg-zinc-800/50 border border-zinc-700/50 hover:border-zinc-600'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <Calendar className="w-4 h-4 text-zinc-400" />
+                        <span className="text-white font-medium">
+                          {new Date(record.date).toLocaleDateString('en-US', { 
+                            weekday: 'short', 
+                            month: 'short', 
+                            day: 'numeric' 
+                          })}
+                        </span>
+                        {record.status === 'locked' && (
+                          <Lock className="w-3 h-3 text-amber-400" />
+                        )}
+                      </div>
+                      <div className="flex items-center gap-4 text-sm">
+                        <span className="text-zinc-400">
+                          {record.summary.totalMaterials} items
+                        </span>
+                        <span className="text-emerald-400">
+                          ₹{record.summary.totalStockValue.toLocaleString()}
+                        </span>
+                        {record.summary.lowStockCount > 0 && (
+                          <span className="text-yellow-400">
+                            {record.summary.lowStockCount} low
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </motion.div>
+        )}
+
         {/* --- Tab: Stock Updates (Excel-Style Grid) --- */}
         {activeTab === 'stock-updates' && (
           <>

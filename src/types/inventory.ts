@@ -41,3 +41,56 @@ export interface IssueRecord {
 export const categories = ['Raw Material', 'Consumable', 'Tool', 'Safety Equipment'];
 export const teams = ['Tooling', 'Production', 'Assembly', 'Quality', 'Maintenance', 'R&D'];
 export const projects = ['Project Alpha', 'Project Beta', 'Project Gamma', 'Maintenance', 'General'];
+
+// ═══════════════════════════════════════════════════════════════
+// DAILY STOCK TRACKING INTERFACES
+// ═══════════════════════════════════════════════════════════════
+
+export interface DailyMaterialStock {
+  materialId: string;
+  materialCode: string;
+  materialName: string;
+  category: string;
+  supplierName: string;
+  uom: string;
+  rate: number;
+  openingStock: number;
+  inward: number;           // Purchases received
+  projectIssues: number;    // Total issued to projects
+  rdUsage: number;
+  internalUsage: number;
+  newFactoryUsage: number;
+  closingStock: number;
+  minStock: number;
+  stockValue: number;       // closingStock * rate
+}
+
+export interface DailyStockRecord {
+  id: string;
+  date: string;             // ISO date string (YYYY-MM-DD)
+  materials: DailyMaterialStock[];
+  summary: {
+    totalMaterials: number;
+    totalStockValue: number;
+    lowStockCount: number;
+    outOfStockCount: number;
+    totalInward: number;
+    totalIssued: number;
+  };
+  savedBy: string;
+  savedAt: string;          // ISO timestamp
+  status: 'draft' | 'saved' | 'locked';
+  notes?: string;
+}
+
+export interface StockMovement {
+  id: string;
+  date: string;
+  materialId: string;
+  materialName: string;
+  type: 'inward' | 'issue' | 'adjustment';
+  quantity: number;
+  reference: string;        // PO number, project name, etc.
+  enteredBy: string;
+  timestamp: string;
+}
