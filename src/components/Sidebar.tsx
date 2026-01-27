@@ -24,7 +24,7 @@ const MENU = [
   { name: 'MD Dashboard', path: '/md', icon: LayoutDashboard, showNotification: true },
   { name: 'Tooling', path: '/md/tooling', icon: Cog },
   { name: 'Store', path: '/store', icon: Warehouse },  // Store Manager - GRN + Inventory
-  { name: 'Purchase', path: '/MDpurchase icon: ShoppingCart },  // Purchase Team - Create POs
+  { name: 'Purchase', path: '/purchase', icon: ShoppingCart },  // Purchase Team - Create POs
   { name: 'Manufacturing', path: '/production', icon: Factory },
   { name: 'Finished Goods', path: '/fg-store', icon: PackageCheck },
   { name: 'Dispatch', path: '/dispatch', icon: Truck },

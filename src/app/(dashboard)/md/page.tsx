@@ -5,8 +5,10 @@ import {
   Factory, Users, TrendingUp, TrendingDown, Calendar, BarChart3, 
   ArrowRight, Activity, CheckCircle, AlertTriangle, Clock,
   X, Cog, Building2, Warehouse, Bell, Package, Phone, Mail,
-  MapPin, FileText, ShoppingCart, User, Building, Eye, Boxes
+  MapPin, FileText, ShoppingCart, User, Building, Eye, Boxes,
+  LayoutDashboard
 } from "lucide-react";
+import MDPurchaseOverview from '../purchase/MDpurchase';
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { db } from '@/lib/firebase/client';
@@ -169,6 +171,7 @@ export default function MDDashboard() {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [activeModal, setActiveModal] = useState<ModalType>(null);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [activeView, setActiveView] = useState<'dashboard' | 'purchase'>('dashboard');
   const [pendingOrders, setPendingOrders] = useState<PurchaseOrder[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<PurchaseOrder | null>(null);
   const [showOrderDetails, setShowOrderDetails] = useState(false);
@@ -370,6 +373,32 @@ export default function MDDashboard() {
               <span className="text-zinc-700">•</span>
               <span className="font-mono text-cyan-400">{timeString}</span>
             </motion.p>
+          </div>
+
+          {/* View Tabs */}
+          <div className="flex items-center gap-2 bg-white/5 rounded-2xl p-1.5 border border-white/10">
+            <button
+              onClick={() => setActiveView('dashboard')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all ${
+                activeView === 'dashboard'
+                  ? 'bg-gradient-to-r from-cyan-500/20 to-blue-500/20 text-cyan-400 border border-cyan-500/30'
+                  : 'text-zinc-400 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              <LayoutDashboard className="w-4 h-4" />
+              Overview
+            </button>
+            <button
+              onClick={() => setActiveView('purchase')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all ${
+                activeView === 'purchase'
+                  ? 'bg-gradient-to-r from-indigo-500/20 to-purple-500/20 text-indigo-400 border border-indigo-500/30'
+                  : 'text-zinc-400 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              <ShoppingCart className="w-4 h-4" />
+              Purchase
+            </button>
           </div>
           
           <motion.div 
@@ -649,6 +678,11 @@ export default function MDDashboard() {
           </motion.div>
         </motion.header>
 
+        {/* ════════════════════ CONDITIONAL CONTENT ════════════════════ */}
+        {activeView === 'purchase' ? (
+          <MDPurchaseOverview />
+        ) : (
+          <>
         {/* ════════════════════ KPI CARDS ════════════════════ */}
         <motion.div variants={staggerContainer} className="grid grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-5 mb-8">
           <KPICard
@@ -1121,6 +1155,8 @@ export default function MDDashboard() {
           <span>© 2026 TrioVision International • Composites ERP System</span>
           <span>Last updated: {timeString}</span>
         </motion.footer>
+          </>
+        )}
       </motion.div>
 
       {/* ════════════════════ MODALS (Production Sheds Only) ════════════════════ */}
