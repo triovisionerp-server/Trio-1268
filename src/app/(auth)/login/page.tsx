@@ -1,42 +1,15 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Eye, EyeOff, Mail, Lock, Loader2, AlertCircle, HelpCircle, KeyRound } from 'lucide-react';
-import Image from 'next/image';
+import { useAuth } from '@/lib/auth/AuthContext';
+import { getRoleConfig } from '@/types/user';
 
 const COMPANY_DOMAIN = '@triovisioninternational.com';
-
-const USERS: Record<string, string> = {
-  md: 'md123',
-  admin: 'admin123',
-  naveen: 'hr123',
-  naresh: 'hr123',
-  dhathri: 'hr123',
-  prasuna: 'hr123',
-  store1: 'store123',
-  store2: 'store123',
-  supervisor: 'supervisor123',
-  pm: 'pm123',
-};
-
-// Role-based dashboard routing map
-// UPDATED: Supervisor goes to /supervisor (Production Floor)
-const ROLE_DASHBOARD_MAP: Record<string, string> = {
-  md: '/md',
-  admin: '/admin',
-  naveen: '/hr',
-  naresh: '/hr',
-  dhathri: '/hr',
-  prasuna: '/hr',
-  store1: '/empStore',
-  store2: '/empStore2',
-  supervisor: '/supervisor', // <--- FIXED PATH
-  pm: '/pm',
-};
 
 export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
@@ -48,10 +21,21 @@ export default function LoginPage() {
   const [shake, setShake] = useState(false);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const router = useRouter();
+  
+  // Use dynamic auth from Firebase
+  const { signIn, user, userProfile, loading: authLoading } = useAuth();
 
   const fullEmail = emailLocal.includes('@') 
     ? emailLocal 
     : emailLocal + COMPANY_DOMAIN;
+
+  // Redirect if already logged in
+  useEffect(() => {
+    if (!authLoading && user && userProfile) {
+      const roleConfig = getRoleConfig(userProfile.role);
+      router.push(roleConfig?.dashboardPath || '/md');
+    }
+  }, [authLoading, user, userProfile, router]);
 
   const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     let value = e.target.value;
@@ -101,56 +85,51 @@ export default function LoginPage() {
     setError('');
     setIsLoading(true);
 
-    // 1. Check Dynamic Database (Created by HR/Admin)
-    const dbUsers = JSON.parse(localStorage.getItem('erp_users') || "[]");
-    
-    // Match email and password (using temp password 'Trio@2025' for new users)
-    const foundUser = dbUsers.find((u: any) => u.email === fullEmail && password === u.password);
+    try {
+      // Use Firebase Auth via AuthContext
+      const result = await signIn(fullEmail, password);
 
-    // 2. Fallback to Hardcoded Users (for Admin access if DB empty)
-    const isHardcoded = USERS[emailLocal] === password;
-
-    if (foundUser || isHardcoded) {
-      // Determine Role
-      const role = foundUser ? foundUser.role : emailLocal; // Hardcoded uses username as role
-      const name = foundUser ? foundUser.name : "System User";
-
-      // Store user data in localStorage
-      localStorage.setItem('currentUser', JSON.stringify({
-        role,
-        email: foundUser ? foundUser.email : fullEmail,
-        name,
-        id: foundUser ? foundUser.id : `hardcoded-${emailLocal}`,
-      }));
-      localStorage.setItem('currentUserName', name);
-      
-      setTimeout(() => {
+      if (result.success) {
+        // Success - AuthContext will handle redirect
+        setTimeout(() => {
+          setIsLoading(false);
+        }, 800);
+      } else {
+        // Login failed
+        const newFailedAttempts = failedAttempts + 1;
+        setFailedAttempts(newFailedAttempts);
+        setError(result.error || 'Invalid email or password');
+        setPassword('');
         setIsLoading(false);
-        // Routing using ROLE_DASHBOARD_MAP
-        const dashboardPath = ROLE_DASHBOARD_MAP[role] || '/admin';
-        router.push(dashboardPath);
-      }, 800);
-    } else {
-      // Failed login handling
-      const newFailedAttempts = failedAttempts + 1;
-      setFailedAttempts(newFailedAttempts);
-      setError('Invalid email or password');
-      setPassword('');
+        triggerShake();
+
+        // Lock account after 3 attempts
+        if (newFailedAttempts >= 3) {
+          console.log('ALERT: Account locked for', fullEmail, '- Admin notified');
+        }
+      }
+    } catch (err: any) {
+      setError(err.message || 'An error occurred during login');
       setIsLoading(false);
       triggerShake();
-
-      // Lock account after 3 attempts
-      if (newFailedAttempts >= 3) {
-        console.log('ALERT: Account locked for', fullEmail, '- Admin notified');
-        // Optional: Send WhatsApp alert
-        // requestAdminSupport();
-      }
     }
   };
 
+  // Show loading while checking auth state
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-950 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="w-10 h-10 text-blue-500 animate-spin" />
+          <p className="text-zinc-400 text-sm">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="relative min-h-screen bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-950 flex items-center justify-center p-4 overflow-hidden">
-      <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:4rem_4rem]"></div>
+      <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear_gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:4rem_4rem]"></div>
       
       <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl animate-pulse"></div>
       <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl animate-pulse delay-1000"></div>

@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import './globals.css';
 import { Analytics } from "@vercel/analytics/next";
 import { ThemeProvider } from '@/lib/ThemeContext';
+import { AuthProvider } from '@/lib/auth/AuthContext';
 
 export const metadata: Metadata = {
   title: 'Composite ERP',
@@ -21,9 +22,11 @@ export default function RootLayout({
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
       </head>
       <body className="font-sans">
-        <ThemeProvider>
-          {children}
-        </ThemeProvider>
+        <AuthProvider>
+          <ThemeProvider>
+            {children}
+          </ThemeProvider>
+        </AuthProvider>
         <Analytics />
       </body>
     </html>
