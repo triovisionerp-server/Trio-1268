@@ -6,7 +6,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Eye, EyeOff, Mail, Lock, Loader2, AlertCircle, HelpCircle, KeyRound } from 'lucide-react';
-import Image from 'next/image';
 
 const COMPANY_DOMAIN = '@triovisioninternational.com';
 
@@ -73,8 +72,6 @@ export default function LoginPage() {
       setError('Please enter your email first');
       return;
     }
-
-    const resetMessage = `Password Reset Request\n\nEmail: ${fullEmail}\n\nA password reset link has been sent to your registered email address.\n\nIf you don't receive it, please contact: +91 7981085020`;
     
     alert('✅ Password reset link sent!\n\nCheck your email for password reset instructions.');
     
@@ -98,10 +95,17 @@ export default function LoginPage() {
     setIsLoading(true);
 
     // 1. Check Dynamic Database (Created by HR/Admin)
-    const dbUsers = JSON.parse(localStorage.getItem('erp_users') || "[]");
+    interface DBUser {
+      id: string;
+      email: string;
+      password: string;
+      name: string;
+      role: string;
+    }
+    const dbUsers: DBUser[] = JSON.parse(localStorage.getItem('erp_users') || "[]");
     
     // Match email and password (using temp password 'Trio@2025' for new users)
-    const foundUser = dbUsers.find((u: any) => u.email === fullEmail && password === u.password);
+    const foundUser = dbUsers.find((u) => u.email === fullEmail && password === u.password);
 
     // 2. Fallback to Hardcoded Users (for Admin access if DB empty)
     const isHardcoded = USERS[emailLocal] === password;
