@@ -18,7 +18,10 @@ import {
   Eye,
   Trash2,
   ExternalLink,
-  RefreshCw
+  RefreshCw,
+  Bell,
+  Phone,
+  Mail
 } from 'lucide-react';
 import { db } from '@/lib/firebase/client';
 import { 
@@ -32,11 +35,41 @@ import {
   PurchaseOrder, 
   POItem, 
   VendorDetails, 
-  InventoryItem,
   MD_APPROVAL_THRESHOLD,
   COLLECTIONS,
   POStatus
 } from '@/types/purchase';
+
+// Firebase collection for materials (same as empStore)
+const FB_MATERIALS = 'inventory_materials';
+const FB_SUPPLIERS = 'inventory_suppliers';
+
+// Material interface matching empStore
+interface MaterialItem {
+  id: string;
+  code: string;
+  name: string;
+  category: string;
+  supplier_id?: string;
+  supplier_name: string;
+  current_stock: number;
+  min_stock: number;
+  purchase_price: number;
+  unit: string;
+  image_url?: string;
+}
+
+// Supplier interface matching empStore
+interface SupplierItem {
+  id: string;
+  name: string;
+  contact: string;
+  email: string;
+  phone: string;
+  gst: string;
+  address: string;
+  city: string;
+}
 
 // ==========================================
 // PURCHASE PAGE COMPONENT
@@ -45,8 +78,8 @@ import {
 export default function PurchasePage() {
   // State for data
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
-  const [inventory, setInventory] = useState<InventoryItem[]>([]);
-  const [vendors, setVendors] = useState<VendorDetails[]>([]);
+  const [materials, setMaterials] = useState<MaterialItem[]>([]);
+  const [suppliers, setSuppliers] = useState<SupplierItem[]>([]);
   const [loading, setLoading] = useState(true);
 
   // UI State
@@ -55,6 +88,7 @@ export default function PurchasePage() {
   const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<POStatus | 'all'>('all');
+  const [showLowStockAlert, setShowLowStockAlert] = useState(true);
 
   // Form State
   const [selectedVendor, setSelectedVendor] = useState<VendorDetails | null>(null);
@@ -81,7 +115,6 @@ export default function PurchasePage() {
           id: d.id,
           ...d.data()
         })) as PurchaseOrder[];
-        // Sort by createdAt in JavaScript
         orders.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
         setPurchaseOrders(orders);
         setLoading(false);
@@ -92,44 +125,42 @@ export default function PurchasePage() {
       }
     );
 
-    // Listen to Inventory
-    const unsubInv = onSnapshot(
-      collection(db, COLLECTIONS.INVENTORY),
+    // Listen to Materials (from inventory_materials - same as empStore)
+    const unsubMaterials = onSnapshot(
+      collection(db, FB_MATERIALS),
       (snapshot) => {
-        const items: InventoryItem[] = snapshot.docs.map(d => ({
+        const items: MaterialItem[] = snapshot.docs.map(d => ({
           id: d.id,
           ...d.data()
-        })) as InventoryItem[];
-        // Sort by name in JavaScript (with null check)
+        })) as MaterialItem[];
         items.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-        setInventory(items);
+        setMaterials(items);
       },
       (error) => {
-        console.error('Error listening to inventory:', error);
+        console.error('Error listening to materials:', error);
       }
     );
 
-    // Listen to Vendors
-    const unsubVendor = onSnapshot(
-      collection(db, COLLECTIONS.VENDORS),
+    // Listen to Suppliers (from inventory_suppliers - same as empStore)
+    const unsubSuppliers = onSnapshot(
+      collection(db, FB_SUPPLIERS),
       (snapshot) => {
-        const v: VendorDetails[] = snapshot.docs.map(d => ({
+        const sups: SupplierItem[] = snapshot.docs.map(d => ({
           id: d.id,
           ...d.data()
-        })) as VendorDetails[];
-        // Sort by name in JavaScript (with null check)
-        v.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-        setVendors(v);
+        })) as SupplierItem[];
+        sups.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+        setSuppliers(sups);
       },
       (error) => {
-        console.error('Error listening to vendors:', error);
+        console.error('Error listening to suppliers:', error);
       }
     );
 
     return () => {
       unsubPO();
-      unsubInv();
-      unsubVendor();
+      unsubMaterials();
+      unsubSuppliers();
     };
   }, []);
 
@@ -137,6 +168,8 @@ export default function PurchasePage() {
   // CALCULATE STATS
   // ==========================================
 
+  const lowStockItems = materials.filter(item => (item.current_stock || 0) <= (item.min_stock || 0));
+  
   const stats = {
     total: purchaseOrders.length,
     pendingApproval: purchaseOrders.filter(po => po.status === 'pending_md_approval').length,
@@ -145,7 +178,8 @@ export default function PurchasePage() {
     totalValue: purchaseOrders
       .filter(po => po.status === 'approved' || po.status === 'received')
       .reduce((sum, po) => sum + (po.totalAmount || 0), 0),
-    lowStockItems: inventory.filter(item => (item.currentStock || 0) <= (item.minLevel || 0)).length
+    lowStockItems: lowStockItems.length,
+    criticalItems: lowStockItems.filter(item => (item.current_stock || 0) === 0).length
   };
 
   // ==========================================
@@ -161,6 +195,16 @@ export default function PurchasePage() {
   };
 
   // ==========================================
+  // GET SUPPLIER FOR MATERIAL
+  // ==========================================
+
+  const getSupplierForMaterial = (materialId: string): SupplierItem | null => {
+    const material = materials.find(m => m.id === materialId);
+    if (!material?.supplier_name) return null;
+    return suppliers.find(s => s.name === material.supplier_name) || null;
+  };
+
+  // ==========================================
   // ADD ITEM TO PO
   // ==========================================
 
@@ -170,7 +214,7 @@ export default function PurchasePage() {
       return;
     }
 
-    const item = inventory.find(i => i.id === selectedItem);
+    const item = materials.find(i => i.id === selectedItem);
     if (!item) return;
 
     const qty = parseFloat(quantity);
@@ -190,6 +234,32 @@ export default function PurchasePage() {
     setSelectedItem('');
     setQuantity('');
     setUnitPrice('');
+  };
+
+  // ==========================================
+  // AUTO-FILL ITEM DETAILS
+  // ==========================================
+
+  const handleItemSelect = (itemId: string) => {
+    setSelectedItem(itemId);
+    const item = materials.find(i => i.id === itemId);
+    if (item) {
+      setUnitPrice(item.purchase_price?.toString() || '0');
+      // Auto-suggest supplier
+      const supplier = getSupplierForMaterial(itemId);
+      if (supplier && !selectedVendor) {
+        setSelectedVendor({
+          id: supplier.id,
+          name: supplier.name,
+          contact: supplier.contact,
+          phone: supplier.phone,
+          email: supplier.email,
+          gstin: supplier.gst,
+          address: supplier.address,
+          city: supplier.city
+        });
+      }
+    }
   };
 
   // ==========================================
@@ -309,10 +379,12 @@ export default function PurchasePage() {
   });
 
   // ==========================================
-  // LOW STOCK ITEMS
+  // GET MATERIALS BY SUPPLIER
   // ==========================================
 
-  const lowStockItems = inventory.filter(item => (item.currentStock || 0) <= (item.minLevel || 0));
+  const getMaterialsBySupplier = (supplierName: string): MaterialItem[] => {
+    return materials.filter(m => m.supplier_name === supplierName);
+  };
 
   // ==========================================
   // STATUS BADGE
@@ -602,55 +674,114 @@ export default function PurchasePage() {
         <div className="lg:col-span-1">
           <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl">
             <div className="p-4 border-b border-zinc-800">
-              <h2 className="font-semibold flex items-center gap-2 text-red-400">
-                <AlertTriangle className="w-5 h-5" />
-                Low Stock Alert
-              </h2>
-              <p className="text-xs text-zinc-400 mt-1">Items that need reordering</p>
-            </div>
-            <div className="max-h-96 overflow-y-auto">
-              {lowStockItems.length === 0 ? (
-                <div className="p-4 text-center text-zinc-400">
-                  <CheckCircle className="w-8 h-8 mx-auto mb-2 text-green-400" />
-                  <p className="text-sm">All stock levels are good!</p>
-                </div>
-              ) : (
-                <div className="divide-y divide-zinc-800">
-                  {lowStockItems.map((item, idx) => (
-                    <div key={item.id || `lowstock-${idx}`} className="p-4 hover:bg-zinc-800/30 transition-colors">
-                      <div className="flex justify-between items-start mb-2">
-                        <div>
-                          <p className="font-medium text-sm">{item.name || 'Unnamed Item'}</p>
-                          <p className="text-xs text-zinc-500">{item.code || '-'}</p>
-                        </div>
-                        <span className="text-xs bg-red-500/20 text-red-400 px-2 py-1 rounded-full">
-                          Low
-                        </span>
-                      </div>
-                      <div className="flex justify-between text-xs">
-                        <span className="text-zinc-400">Current: {item.currentStock || 0} {item.unit || 'units'}</span>
-                        <span className="text-zinc-400">Min: {item.minLevel || 0} {item.unit || 'units'}</span>
-                      </div>
-                      <div className="mt-2 h-2 bg-zinc-800 rounded-full overflow-hidden">
-                        <div 
-                          className="h-full bg-red-500 rounded-full"
-                          style={{ width: `${Math.min((item.currentStock / item.minLevel) * 100, 100)}%` }}
-                        />
-                      </div>
-                      <button
-                        onClick={() => {
-                          setSelectedItem(item.id);
-                          setShowCreateModal(true);
-                        }}
-                        className="mt-3 w-full text-xs bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 py-1.5 rounded-lg transition-colors"
-                      >
-                        Create PO for this item
-                      </button>
-                    </div>
-                  ))}
+              <div className="flex items-center justify-between">
+                <h2 className="font-semibold flex items-center gap-2 text-red-400">
+                  <AlertTriangle className="w-5 h-5" />
+                  Low Stock Alert
+                  {lowStockItems.length > 0 && (
+                    <span className="ml-2 px-2 py-0.5 bg-red-500/20 text-red-400 text-xs rounded-full">
+                      {lowStockItems.length}
+                    </span>
+                  )}
+                </h2>
+                <button
+                  onClick={() => setShowLowStockAlert(!showLowStockAlert)}
+                  className="text-xs text-zinc-400 hover:text-white"
+                >
+                  {showLowStockAlert ? 'Hide' : 'Show'}
+                </button>
+              </div>
+              <p className="text-xs text-zinc-400 mt-1">Items below minimum stock level</p>
+              {stats.criticalItems > 0 && (
+                <div className="mt-2 p-2 bg-red-500/10 border border-red-500/20 rounded-lg">
+                  <p className="text-xs text-red-400 flex items-center gap-1">
+                    <Bell className="w-3 h-3" />
+                    {stats.criticalItems} items are OUT OF STOCK!
+                  </p>
                 </div>
               )}
             </div>
+            {showLowStockAlert && (
+              <div className="max-h-[500px] overflow-y-auto">
+                {lowStockItems.length === 0 ? (
+                  <div className="p-4 text-center text-zinc-400">
+                    <CheckCircle className="w-8 h-8 mx-auto mb-2 text-green-400" />
+                    <p className="text-sm">All stock levels are good!</p>
+                  </div>
+                ) : (
+                  <div className="divide-y divide-zinc-800">
+                    {lowStockItems.map((item, idx) => {
+                      const isOutOfStock = (item.current_stock || 0) === 0;
+                      const stockPercentage = item.min_stock > 0 
+                        ? Math.min((item.current_stock / item.min_stock) * 100, 100) 
+                        : 0;
+                      
+                      return (
+                        <div key={item.id || `lowstock-${idx}`} className={`p-4 hover:bg-zinc-800/30 transition-colors ${isOutOfStock ? 'bg-red-500/5' : ''}`}>
+                          <div className="flex justify-between items-start mb-2">
+                            <div>
+                              <p className="font-medium text-sm">{item.name || 'Unnamed Item'}</p>
+                              <p className="text-xs text-zinc-500">{item.code || '-'} • {item.category}</p>
+                            </div>
+                            <span className={`text-xs px-2 py-1 rounded-full ${isOutOfStock ? 'bg-red-500/30 text-red-300' : 'bg-yellow-500/20 text-yellow-400'}`}>
+                              {isOutOfStock ? 'OUT' : 'Low'}
+                            </span>
+                          </div>
+                          
+                          {/* Stock Info */}
+                          <div className="flex justify-between text-xs mb-2">
+                            <span className={isOutOfStock ? 'text-red-400' : 'text-zinc-400'}>
+                              Current: {item.current_stock || 0} {item.unit || 'units'}
+                            </span>
+                            <span className="text-zinc-400">Min: {item.min_stock || 0} {item.unit || 'units'}</span>
+                          </div>
+                          
+                          {/* Stock Bar */}
+                          <div className="h-2 bg-zinc-800 rounded-full overflow-hidden mb-3">
+                            <div 
+                              className={`h-full rounded-full ${isOutOfStock ? 'bg-red-500' : 'bg-yellow-500'}`}
+                              style={{ width: `${stockPercentage}%` }}
+                            />
+                          </div>
+                          
+                          {/* Supplier Info */}
+                          {item.supplier_name && (
+                            <div className="mb-3 p-2 bg-zinc-800/50 rounded-lg">
+                              <p className="text-xs text-zinc-400 flex items-center gap-1 mb-1">
+                                <Building2 className="w-3 h-3" />
+                                Supplier: <span className="text-blue-400">{item.supplier_name}</span>
+                              </p>
+                              <p className="text-xs text-zinc-500">
+                                Last Price: ₹{item.purchase_price || 0}/{item.unit}
+                              </p>
+                            </div>
+                          )}
+                          
+                          {/* Action Button */}
+                          <button
+                            onClick={() => {
+                              handleItemSelect(item.id);
+                              // Calculate suggested quantity (2x minimum stock)
+                              const suggestedQty = Math.max((item.min_stock || 10) * 2 - (item.current_stock || 0), item.min_stock || 10);
+                              setQuantity(suggestedQty.toString());
+                              setShowCreateModal(true);
+                            }}
+                            className={`w-full text-xs py-2 rounded-lg transition-colors flex items-center justify-center gap-2 ${
+                              isOutOfStock 
+                                ? 'bg-red-600 hover:bg-red-700 text-white' 
+                                : 'bg-blue-600/20 hover:bg-blue-600/30 text-blue-400'
+                            }`}
+                          >
+                            <Plus className="w-3 h-3" />
+                            {isOutOfStock ? 'Urgent: Create PO Now' : 'Create PO'}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -685,27 +816,64 @@ export default function PurchasePage() {
               <div className="p-6 space-y-6">
                 {/* Vendor Selection */}
                 <div>
-                  <label className="block text-sm font-medium mb-2">Select Vendor *</label>
+                  <label className="block text-sm font-medium mb-2">Select Vendor/Supplier *</label>
                   <select
                     value={selectedVendor?.id || ''}
                     onChange={(e) => {
-                      const vendor = vendors.find(v => v.id === e.target.value);
-                      setSelectedVendor(vendor || null);
+                      const supplier = suppliers.find(s => s.id === e.target.value);
+                      if (supplier) {
+                        setSelectedVendor({
+                          id: supplier.id,
+                          name: supplier.name,
+                          contact: supplier.contact,
+                          phone: supplier.phone,
+                          email: supplier.email,
+                          gstin: supplier.gst,
+                          address: supplier.address,
+                          city: supplier.city
+                        });
+                      } else {
+                        setSelectedVendor(null);
+                      }
                     }}
                     className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
                     style={{ colorScheme: 'dark' }}
                   >
-                    <option value="">Choose a vendor...</option>
-                    {vendors.map((vendor, idx) => (
-                      <option key={vendor.id || `vendor-${idx}`} value={vendor.id}>
-                        {vendor.name || 'Unknown'} - {vendor.city || 'N/A'}
+                    <option value="">Choose a supplier...</option>
+                    {suppliers.map((supplier, idx) => (
+                      <option key={supplier.id || `supplier-${idx}`} value={supplier.id}>
+                        {supplier.name || 'Unknown'} - {supplier.city || 'N/A'}
                       </option>
                     ))}
                   </select>
                   {selectedVendor && (
-                    <div className="mt-2 p-3 bg-zinc-800/50 rounded-lg text-sm">
-                      <p><span className="text-zinc-400">Contact:</span> {selectedVendor.phone}</p>
+                    <div className="mt-2 p-3 bg-zinc-800/50 rounded-lg text-sm space-y-1">
+                      <p className="flex items-center gap-2">
+                        <Phone className="w-3 h-3 text-zinc-400" />
+                        <span className="text-zinc-400">Phone:</span> {selectedVendor.phone}
+                      </p>
+                      <p className="flex items-center gap-2">
+                        <Mail className="w-3 h-3 text-zinc-400" />
+                        <span className="text-zinc-400">Email:</span> {selectedVendor.email}
+                      </p>
                       <p><span className="text-zinc-400">GSTIN:</span> {selectedVendor.gstin}</p>
+                      <p><span className="text-zinc-400">Address:</span> {selectedVendor.address}, {selectedVendor.city}</p>
+                      {/* Show materials from this supplier */}
+                      <div className="mt-2 pt-2 border-t border-zinc-700">
+                        <p className="text-xs text-zinc-400 mb-1">Materials from this supplier:</p>
+                        <div className="flex flex-wrap gap-1">
+                          {getMaterialsBySupplier(selectedVendor.name).slice(0, 5).map((mat, i) => (
+                            <span key={i} className="text-xs bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded">
+                              {mat.name}
+                            </span>
+                          ))}
+                          {getMaterialsBySupplier(selectedVendor.name).length > 5 && (
+                            <span className="text-xs text-zinc-500">
+                              +{getMaterialsBySupplier(selectedVendor.name).length - 5} more
+                            </span>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -716,16 +884,28 @@ export default function PurchasePage() {
                   <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                     <select
                       value={selectedItem}
-                      onChange={(e) => setSelectedItem(e.target.value)}
+                      onChange={(e) => handleItemSelect(e.target.value)}
                       className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                       style={{ colorScheme: 'dark' }}
                     >
                       <option value="">Select Item...</option>
-                      {inventory.map((item, idx) => (
-                        <option key={item.id || `item-${idx}`} value={item.id}>
-                          {item.name || 'Unnamed'} ({item.code || 'N/A'})
-                        </option>
-                      ))}
+                      {/* Show items from selected vendor first, then others */}
+                      {selectedVendor && getMaterialsBySupplier(selectedVendor.name).length > 0 && (
+                        <optgroup label={`From ${selectedVendor.name}`}>
+                          {getMaterialsBySupplier(selectedVendor.name).map((item, idx) => (
+                            <option key={item.id || `vendor-item-${idx}`} value={item.id}>
+                              {item.name || 'Unnamed'} ({item.code || 'N/A'}) - Stock: {item.current_stock}
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+                      <optgroup label="All Materials">
+                        {materials.map((item, idx) => (
+                          <option key={item.id || `item-${idx}`} value={item.id}>
+                            {item.name || 'Unnamed'} ({item.code || 'N/A'}) - {item.supplier_name || 'No Supplier'}
+                          </option>
+                        ))}
+                      </optgroup>
                     </select>
                     <input
                       type="number"
