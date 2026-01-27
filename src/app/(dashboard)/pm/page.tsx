@@ -147,9 +147,11 @@ export default function ProjectManagerDashboard() {
             const processed = mapped.map(row => {
                 const total = parseFloat(row.totalParts) || 0;
                 const produced = parseFloat(row.totalPartsProduced) || 0;
-                row.percentCompleted = total > 0 ? Math.round((produced / total) * 100) : 0;
-                row.totalPartsToBeProduced = Math.max(0, total - produced);
-                return row;
+                return {
+                    ...row,
+                    percentCompleted: total > 0 ? Math.round((produced / total) * 100) : 0,
+                    totalPartsToBeProduced: Math.max(0, total - produced)
+                };
             });
 
             const finalData = [...processed, ...data];
@@ -169,6 +171,26 @@ export default function ProjectManagerDashboard() {
       XLSX.utils.book_append_sheet(wb, ws, "Projects");
       XLSX.writeFile(wb, "Project_Data.xlsx");
   };
+
+    // --- 5. CLEAR ALL / RESET ---
+    const clearAll = () => {
+        if (!confirm('Clear all project data? This cannot be undone.')) return;
+        try {
+            localStorage.removeItem('erpProjectData');
+            localStorage.removeItem('boms');
+            setData([]);
+            setStats({ total: 0, completed: 0, inProgress: 0, efficiency: 0 });
+            setChartData([]);
+            setStatusChart([]);
+            if (autoSaveTimerRef.current) {
+                clearTimeout(autoSaveTimerRef.current);
+                autoSaveTimerRef.current = null;
+            }
+            alert('Project data cleared.');
+        } catch (e) {
+            console.error('Error clearing data', e);
+        }
+    };
 
   return (
     <div className="min-h-screen bg-zinc-950 text-white font-sans pb-20 relative overflow-hidden">

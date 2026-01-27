@@ -17,6 +17,8 @@ const USERS: Record<string, string> = {
   naresh: 'hr123',
   dhathri: 'hr123',
   prasuna: 'hr123',
+  store1: 'store123',
+  store2: 'store123',
   supervisor: 'supervisor123',
   pm: 'pm123',
 };
@@ -30,6 +32,8 @@ const ROLE_DASHBOARD_MAP: Record<string, string> = {
   naresh: '/hr',
   dhathri: '/hr',
   prasuna: '/hr',
+  store1: '/empStore',
+  store2: '/empStore2',
   supervisor: '/supervisor', // <--- FIXED PATH
   pm: '/pm',
 };
@@ -165,10 +169,10 @@ export default function LoginPage() {
           className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-3xl shadow-2xl overflow-hidden"
         >
           <div className="p-8 sm:p-10">
-            {/* Company Logo */}
+            {/* Centered Company Logo */}
             <div className="flex justify-center mb-6">
-              <div className="w-20 h-20 bg-gradient-to-br from-blue-600 to-purple-600 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-500/20">
-                <span className="text-3xl font-bold text-white">TV</span>
+              <div className="center-logo">
+                <img src="/Tlogo.png" alt="TrioVision" className="w-80 h-80 object-contain" />
               </div>
             </div>
 
@@ -176,13 +180,11 @@ export default function LoginPage() {
               <motion.div
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
-                transition={{ delay: 0.2, duration: 0.5 }}
+                transition={{ delay: 0.2, duration: 1.5 }}
               >
-                <h1 className="text-3xl sm:text-4xl font-light text-white mb-2 tracking-tight">
-                  Welcome Back
-                </h1>
+                
                 <p className="text-zinc-400 text-sm font-light">
-                  Sign in to Composite ERP
+                  Sign in to TrioVision ERP
                 </p>
               </motion.div>
             </div>
@@ -330,6 +332,7 @@ export default function LoginPage() {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.5 }}
+                className="mt-8"
               >
                 <Button
                   type="submit"

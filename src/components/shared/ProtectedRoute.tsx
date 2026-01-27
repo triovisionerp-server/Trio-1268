@@ -28,6 +28,7 @@ export function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) 
           'HR': '/hr',
           'Manager': '/manager',
           'Supervisor': '/supervisor',
+          'Technician': '/employee',
         };
         router.push(dashboardMap[user.role] || '/login');
       }

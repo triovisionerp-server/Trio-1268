@@ -1,6 +1,6 @@
 import { Timestamp } from 'firebase/firestore';
 
-export type UserRole = 'MD' | 'PM' | 'HR' | 'Manager' | 'Supervisor' | 'Technician';
+export type UserRole = 'Admin' | 'MD' | 'PM' | 'HR' | 'Manager' | 'Supervisor' | 'Technician';
 
 export type TaskStatus = 'pending' | 'in-progress' | 'completed' | 'paused' | 'cancelled';
 
