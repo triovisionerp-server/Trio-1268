@@ -296,17 +296,17 @@ export default function PurchasePage() {
 
     try {
       const totalAmount = calculateTotal();
-      const requiresMDApproval = totalAmount >= MD_APPROVAL_THRESHOLD;
       const poNumber = generatePONumber();
 
+      // ALL POs require MD approval
       const newPO: Omit<PurchaseOrder, 'id'> = {
         poNumber,
         vendorDetails: selectedVendor,
         items: poItems,
         totalAmount,
-        status: requiresMDApproval ? 'pending_md_approval' : 'approved',
-        requiresMDApproval,
-        mdApprovalLink: requiresMDApproval ? `/md?approve=${poNumber}` : undefined,
+        status: 'pending_md_approval', // Always pending MD approval
+        requiresMDApproval: true, // Always true
+        mdApprovalLink: `/md?approve=${poNumber}`,
         createdBy: 'Purchase Team',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -323,12 +323,8 @@ export default function PurchasePage() {
       setNotes('');
       setShowCreateModal(false);
 
-      // Show appropriate message
-      if (requiresMDApproval) {
-        alert(`Purchase Order ${poNumber} created!\n\n⚠️ Amount exceeds ₹50,000 - Sent to MD for approval.\n\nMD Approval Link: ${window.location.origin}/md`);
-      } else {
-        alert(`Purchase Order ${poNumber} created and auto-approved!\n\n✅ Order will appear in Store Incoming list.`);
-      }
+      // Always show MD approval message
+      alert(`✅ Purchase Order ${poNumber} created!\n\n📋 Sent to MD for approval.\n\nTotal: ₹${totalAmount.toLocaleString()}\nVendor: ${selectedVendor.name}\n\nMD will review at: ${window.location.origin}/md`);
 
     } catch (error) {
       console.error('Error creating PO:', error);
