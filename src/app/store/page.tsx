@@ -17,7 +17,10 @@ import {
   Eye,
   PackageCheck,
   XCircle,
-  Warehouse
+  Warehouse,
+  Image as ImageIcon,
+  Grid3X3,
+  List
 } from 'lucide-react';
 import { db } from '@/lib/firebase/client';
 import { 
@@ -30,12 +33,31 @@ import {
 } from 'firebase/firestore';
 import { 
   PurchaseOrder, 
-  InventoryItem,
   GoodsReceipt,
   GRNItem,
   COLLECTIONS,
   POStatus
 } from '@/types/purchase';
+
+// Firebase collection name - same as empStore for sync
+const FB_MATERIALS = 'inventory_materials';
+
+// Material Item type matching empStore sync
+interface MaterialItem {
+  id: string;
+  code: string;
+  name: string;
+  category: string;
+  supplier_id?: string;
+  supplier_name: string;
+  current_stock: number;
+  min_stock: number;
+  purchase_price: number;
+  unit: string;
+  image_url?: string;
+  created_at: string;
+  updated_at: string;
+}
 
 // ==========================================
 // STORE PAGE - INVENTORY + INCOMING ORDERS
@@ -43,18 +65,20 @@ import {
 
 export default function StorePage() {
   // State for data
-  const [inventory, setInventory] = useState<InventoryItem[]>([]);
+  const [materials, setMaterials] = useState<MaterialItem[]>([]);
   const [incomingOrders, setIncomingOrders] = useState<PurchaseOrder[]>([]);
   const [goodsReceipts, setGoodsReceipts] = useState<GoodsReceipt[]>([]);
   const [loading, setLoading] = useState(true);
 
   // UI State
-  const [activeTab, setActiveTab] = useState<'inventory' | 'incoming' | 'grn'>('incoming');
+  const [activeTab, setActiveTab] = useState<'inventory' | 'incoming' | 'grn'>('inventory');
   const [searchTerm, setSearchTerm] = useState('');
   const [showReceiveModal, setShowReceiveModal] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<PurchaseOrder | null>(null);
   const [showViewModal, setShowViewModal] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
+  const [filterCategory, setFilterCategory] = useState<string>('All');
 
   // GRN Form state
   const [receivedItems, setReceivedItems] = useState<GRNItem[]>([]);
@@ -67,21 +91,21 @@ export default function StorePage() {
   // ==========================================
 
   useEffect(() => {
-    // Listen to Inventory
-    const unsubInv = onSnapshot(
-      collection(db, COLLECTIONS.INVENTORY),
+    // Listen to Materials (same collection as empStore)
+    const unsubMaterials = onSnapshot(
+      collection(db, FB_MATERIALS),
       (snapshot) => {
-        const items: InventoryItem[] = snapshot.docs.map(d => ({
+        const items: MaterialItem[] = snapshot.docs.map(d => ({
           id: d.id,
           ...d.data()
-        })) as InventoryItem[];
-        // Sort by name in JavaScript
-        items.sort((a, b) => a.name.localeCompare(b.name));
-        setInventory(items);
+        })) as MaterialItem[];
+        // Sort by name
+        items.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+        setMaterials(items);
         setLoading(false);
       },
       (error) => {
-        console.error('Error listening to inventory:', error);
+        console.error('Error listening to materials:', error);
         setLoading(false);
       }
     );
@@ -96,7 +120,7 @@ export default function StorePage() {
         const incoming = orders.filter(po => 
           po.status === 'approved' || po.status === 'partially_received'
         );
-        // Sort by createdAt in JavaScript
+        // Sort by createdAt
         incoming.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
         setIncomingOrders(incoming);
       },
@@ -113,7 +137,7 @@ export default function StorePage() {
           id: d.id,
           ...d.data()
         })) as GoodsReceipt[];
-        // Sort by receivedAt in JavaScript
+        // Sort by receivedAt
         grns.sort((a, b) => new Date(b.receivedAt).getTime() - new Date(a.receivedAt).getTime());
         setGoodsReceipts(grns);
       },
@@ -123,7 +147,7 @@ export default function StorePage() {
     );
 
     return () => {
-      unsubInv();
+      unsubMaterials();
       unsubPO();
       unsubGRN();
     };
@@ -133,10 +157,12 @@ export default function StorePage() {
   // STATS
   // ==========================================
 
+  const categories = ['All', ...new Set(materials.map(m => m.category).filter(Boolean))];
+
   const stats = {
-    totalItems: inventory.length,
-    lowStock: inventory.filter(item => item.currentStock <= item.minLevel).length,
-    totalValue: inventory.reduce((sum, item) => sum + (item.currentStock * 100), 0), // Estimate
+    totalItems: materials.length,
+    lowStock: materials.filter(item => item.current_stock <= item.min_stock).length,
+    totalValue: materials.reduce((sum, item) => sum + (item.current_stock * (item.purchase_price || 0)), 0),
     incomingOrders: incomingOrders.length,
     pendingReceive: incomingOrders.filter(po => po.status === 'approved').length
   };
@@ -207,13 +233,13 @@ export default function StorePage() {
         // 1. Update inventory stock for each received item
         for (const item of receivedItems) {
           if (item.receivedQty > 0) {
-            const invRef = doc(db, COLLECTIONS.INVENTORY, item.itemID);
-            const currentItem = inventory.find(i => i.id === item.itemID);
+            const materialRef = doc(db, FB_MATERIALS, item.itemID);
+            const currentItem = materials.find(i => i.id === item.itemID);
             if (currentItem) {
-              const newStock = currentItem.currentStock + item.receivedQty;
-              transaction.update(invRef, { 
-                currentStock: newStock,
-                lastUpdated: new Date().toISOString()
+              const newStock = currentItem.current_stock + item.receivedQty;
+              transaction.update(materialRef, { 
+                current_stock: newStock,
+                updated_at: new Date().toISOString()
               });
             }
           }
@@ -286,10 +312,12 @@ export default function StorePage() {
   // FILTER INVENTORY
   // ==========================================
 
-  const filteredInventory = inventory.filter(item => 
-    item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    item.code.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredMaterials = materials.filter(item => {
+    const matchesSearch = (item.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         (item.code || '').toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesCategory = filterCategory === 'All' || item.category === filterCategory;
+    return matchesSearch && matchesCategory;
+  });
 
   // ==========================================
   // STATUS BADGE
@@ -425,7 +453,7 @@ export default function StorePage() {
       <div className="flex gap-2 mb-6">
         {[
           { id: 'incoming', label: 'Incoming Orders', icon: Truck, count: incomingOrders.length },
-          { id: 'inventory', label: 'Current Stock', icon: Package, count: inventory.length },
+          { id: 'inventory', label: 'Current Stock', icon: Package, count: materials.length },
           { id: 'grn', label: 'GRN History', icon: FileCheck, count: goodsReceipts.length }
         ].map((tab) => (
           <button
@@ -551,59 +579,168 @@ export default function StorePage() {
         {activeTab === 'inventory' && (
           <div>
             <div className="p-4 border-b border-zinc-800">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between flex-wrap gap-4">
                 <h2 className="font-semibold flex items-center gap-2">
                   <Package className="w-5 h-5 text-blue-400" />
                   Current Stock Levels
+                  <span className="text-sm font-normal text-zinc-400">({filteredMaterials.length} items)</span>
                 </h2>
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
-                  <input
-                    type="text"
-                    placeholder="Search items..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="bg-zinc-800 border border-zinc-700 rounded-lg pl-10 pr-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-64"
-                  />
+                <div className="flex items-center gap-3">
+                  {/* Category Filter */}
+                  <select
+                    value={filterCategory}
+                    onChange={(e) => setFilterCategory(e.target.value)}
+                    className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    {categories.map(cat => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                  </select>
+                  {/* Search */}
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
+                    <input
+                      type="text"
+                      placeholder="Search items..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="bg-zinc-800 border border-zinc-700 rounded-lg pl-10 pr-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-64"
+                    />
+                  </div>
+                  {/* View Toggle */}
+                  <div className="flex bg-zinc-800 rounded-lg p-1">
+                    <button
+                      onClick={() => setViewMode('grid')}
+                      className={`p-2 rounded-md transition-colors ${viewMode === 'grid' ? 'bg-blue-600 text-white' : 'text-zinc-400 hover:text-white'}`}
+                    >
+                      <Grid3X3 className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => setViewMode('table')}
+                      className={`p-2 rounded-md transition-colors ${viewMode === 'table' ? 'bg-blue-600 text-white' : 'text-zinc-400 hover:text-white'}`}
+                    >
+                      <List className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
 
-            {filteredInventory.length === 0 ? (
+            {filteredMaterials.length === 0 ? (
               <div className="p-8 text-center text-zinc-400">
                 <Package className="w-12 h-12 mx-auto mb-3 opacity-50" />
                 <p>No items found</p>
               </div>
+            ) : viewMode === 'grid' ? (
+              /* Grid View with Images */
+              <div className="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                {filteredMaterials.map((item) => {
+                  const isLow = item.current_stock <= item.min_stock;
+                  return (
+                    <motion.div
+                      key={item.id}
+                      initial={{ opacity: 0, scale: 0.95 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      className={`bg-zinc-900/50 border rounded-xl overflow-hidden hover:border-blue-500/50 transition-all ${
+                        isLow ? 'border-red-500/50' : 'border-zinc-800'
+                      }`}
+                    >
+                      {/* Image Section */}
+                      <div className="aspect-square bg-zinc-800/50 relative flex items-center justify-center">
+                        {item.image_url ? (
+                          <img 
+                            src={item.image_url} 
+                            alt={item.name}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="flex flex-col items-center justify-center text-zinc-500">
+                            <ImageIcon className="w-12 h-12 mb-2" />
+                            <span className="text-xs">No Image</span>
+                          </div>
+                        )}
+                        {/* Category Badge */}
+                        <span className="absolute top-2 left-2 px-2 py-1 bg-zinc-900/80 text-xs rounded-full">
+                          {item.category || 'Uncategorized'}
+                        </span>
+                        {/* Low Stock Warning */}
+                        {isLow && (
+                          <span className="absolute top-2 right-2 px-2 py-1 bg-red-500/80 text-xs rounded-full flex items-center gap-1">
+                            <AlertTriangle className="w-3 h-3" />
+                            Low
+                          </span>
+                        )}
+                      </div>
+                      {/* Info Section */}
+                      <div className="p-4">
+                        <h3 className="font-semibold text-sm truncate" title={item.name}>
+                          {item.name || 'Unnamed Item'}
+                        </h3>
+                        <p className="text-xs text-zinc-500 mt-1">{item.code}</p>
+                        <p className="text-xs text-zinc-400 mt-1 truncate">{item.supplier_name}</p>
+                        <div className="flex items-center justify-between mt-3 pt-3 border-t border-zinc-800">
+                          <div>
+                            <p className="text-xs text-zinc-500">Stock</p>
+                            <p className={`font-bold ${isLow ? 'text-red-400' : 'text-green-400'}`}>
+                              {item.current_stock} <span className="text-xs font-normal text-zinc-500">{item.unit}</span>
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-xs text-zinc-500">Price</p>
+                            <p className="font-semibold text-blue-400">₹{item.purchase_price || 0}</p>
+                          </div>
+                        </div>
+                      </div>
+                    </motion.div>
+                  );
+                })}
+              </div>
             ) : (
+              /* Table View */
               <table className="w-full">
                 <thead className="bg-zinc-800/50">
                   <tr>
+                    <th className="text-left text-xs font-medium text-zinc-400 px-4 py-3">Image</th>
                     <th className="text-left text-xs font-medium text-zinc-400 px-4 py-3">Item</th>
                     <th className="text-left text-xs font-medium text-zinc-400 px-4 py-3">Category</th>
-                    <th className="text-right text-xs font-medium text-zinc-400 px-4 py-3">Current Stock</th>
-                    <th className="text-right text-xs font-medium text-zinc-400 px-4 py-3">Min Level</th>
+                    <th className="text-left text-xs font-medium text-zinc-400 px-4 py-3">Supplier</th>
+                    <th className="text-right text-xs font-medium text-zinc-400 px-4 py-3">Stock</th>
+                    <th className="text-right text-xs font-medium text-zinc-400 px-4 py-3">Min</th>
+                    <th className="text-right text-xs font-medium text-zinc-400 px-4 py-3">Price</th>
                     <th className="text-center text-xs font-medium text-zinc-400 px-4 py-3">Status</th>
-                    <th className="text-left text-xs font-medium text-zinc-400 px-4 py-3">Location</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-800">
-                  {filteredInventory.map((item) => {
-                    const isLow = item.currentStock <= item.minLevel;
+                  {filteredMaterials.map((item) => {
+                    const isLow = item.current_stock <= item.min_stock;
                     return (
                       <tr key={item.id} className="hover:bg-zinc-800/30 transition-colors">
+                        <td className="px-4 py-3">
+                          <div className="w-10 h-10 rounded-lg bg-zinc-800 overflow-hidden flex items-center justify-center">
+                            {item.image_url ? (
+                              <img src={item.image_url} alt={item.name} className="w-full h-full object-cover" />
+                            ) : (
+                              <ImageIcon className="w-5 h-5 text-zinc-600" />
+                            )}
+                          </div>
+                        </td>
                         <td className="px-4 py-3">
                           <div className="font-medium">{item.name}</div>
                           <div className="text-xs text-zinc-500">{item.code}</div>
                         </td>
                         <td className="px-4 py-3 text-sm text-zinc-400">{item.category}</td>
+                        <td className="px-4 py-3 text-sm text-zinc-400">{item.supplier_name}</td>
                         <td className="px-4 py-3 text-right">
                           <span className={`font-semibold ${isLow ? 'text-red-400' : 'text-green-400'}`}>
-                            {item.currentStock}
+                            {item.current_stock}
                           </span>
                           <span className="text-zinc-500 text-sm ml-1">{item.unit}</span>
                         </td>
                         <td className="px-4 py-3 text-right text-sm text-zinc-400">
-                          {item.minLevel} {item.unit}
+                          {item.min_stock} {item.unit}
+                        </td>
+                        <td className="px-4 py-3 text-right text-sm text-blue-400">
+                          ₹{item.purchase_price || 0}
                         </td>
                         <td className="px-4 py-3 text-center">
                           {isLow ? (
@@ -618,7 +755,6 @@ export default function StorePage() {
                             </span>
                           )}
                         </td>
-                        <td className="px-4 py-3 text-sm text-zinc-400">{item.location}</td>
                       </tr>
                     );
                   })}
