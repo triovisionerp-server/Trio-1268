@@ -10,7 +10,7 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { db } from '@/lib/firebase/client';
-import { collection, query, where, onSnapshot, doc, updateDoc, orderBy, getDocs, limit } from 'firebase/firestore';
+import { collection, query, onSnapshot, doc, updateDoc, orderBy, getDocs, limit } from 'firebase/firestore';
 import { COLLECTIONS, MD_APPROVAL_THRESHOLD } from '@/types/purchase';
 import type { PurchaseOrder } from '@/types/purchase';
 import type { DailyStockRecord } from '@/types/inventory';
@@ -186,29 +186,28 @@ export default function MDDashboard() {
   const [mdSignature, setMdSignature] = useState('');
   const [actionSuccess, setActionSuccess] = useState<'approved' | 'rejected' | null>(null);
 
+  // All Purchase Orders (for overview)
+  const [allPurchaseOrders, setAllPurchaseOrders] = useState<PurchaseOrder[]>([]);
+
   // Time update effect
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
 
-  // Fetch pending approval orders from Firebase
+  // Fetch ALL purchase orders from Firebase (for overview)
   useEffect(() => {
-    const q = query(
-      collection(db, COLLECTIONS.PURCHASE_ORDERS),
-      where('status', '==', 'pending_md_approval')
-    );
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+    const unsubscribe = onSnapshot(collection(db, COLLECTIONS.PURCHASE_ORDERS), (snapshot) => {
       const orders: PurchaseOrder[] = [];
       snapshot.forEach((docSnap) => {
         orders.push({ id: docSnap.id, ...docSnap.data() } as PurchaseOrder);
       });
-      // Sort by createdAt in JavaScript instead
       orders.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-      setPendingOrders(orders);
+      setAllPurchaseOrders(orders);
+      // Filter pending orders
+      setPendingOrders(orders.filter(o => o.status === 'pending_md_approval'));
     }, (error) => {
-      console.error('Error fetching pending orders:', error);
+      console.error('Error fetching purchase orders:', error);
     });
 
     return () => unsubscribe();
@@ -958,6 +957,115 @@ export default function MDDashboard() {
             </Link>
           </motion.div>
         </div>
+
+        {/* ════════════════════ PURCHASE OVERVIEW SECTION ════════════════════ */}
+        <motion.div variants={fadeInUp} className="mb-8">
+          <motion.div 
+            className="rounded-3xl bg-gradient-to-br from-indigo-900/20 via-purple-900/10 to-cyan-900/20 backdrop-blur-2xl border border-indigo-500/20 overflow-hidden"
+          >
+            <div className="px-6 py-5 border-b border-white/[0.06] flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-medium text-white flex items-center gap-2">
+                  <ShoppingCart className="w-5 h-5 text-indigo-400" />
+                  Purchase Orders Overview
+                </h3>
+                <p className="text-xs text-zinc-500 mt-0.5">All purchase orders status summary</p>
+              </div>
+              <Link
+                href="/purchase"
+                className="px-4 py-2 rounded-xl bg-indigo-500/20 text-indigo-400 text-sm font-medium hover:bg-indigo-500/30 transition-colors flex items-center gap-2 border border-indigo-500/30"
+              >
+                <Eye className="w-4 h-4" />
+                Full Purchase Page
+              </Link>
+            </div>
+
+            {/* PO Summary Stats */}
+            <div className="p-6">
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+                <div className="text-center p-4 rounded-xl bg-white/5 border border-white/10">
+                  <div className="text-3xl font-bold text-white">{allPurchaseOrders.length}</div>
+                  <div className="text-xs text-zinc-500 mt-1">Total POs</div>
+                </div>
+                <div className="text-center p-4 rounded-xl bg-amber-500/10 border border-amber-500/30">
+                  <div className="text-3xl font-bold text-amber-400">
+                    {allPurchaseOrders.filter(o => o.status === 'pending_md_approval').length}
+                  </div>
+                  <div className="text-xs text-amber-500 mt-1">Pending Approval</div>
+                </div>
+                <div className="text-center p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30">
+                  <div className="text-3xl font-bold text-emerald-400">
+                    {allPurchaseOrders.filter(o => o.status === 'approved').length}
+                  </div>
+                  <div className="text-xs text-emerald-500 mt-1">Approved</div>
+                </div>
+                <div className="text-center p-4 rounded-xl bg-red-500/10 border border-red-500/30">
+                  <div className="text-3xl font-bold text-red-400">
+                    {allPurchaseOrders.filter(o => o.status === 'rejected').length}
+                  </div>
+                  <div className="text-xs text-red-500 mt-1">Rejected</div>
+                </div>
+                <div className="text-center p-4 rounded-xl bg-cyan-500/10 border border-cyan-500/30">
+                  <div className="text-3xl font-bold text-cyan-400">
+                    {allPurchaseOrders.filter(o => o.status === 'received').length}
+                  </div>
+                  <div className="text-xs text-cyan-500 mt-1">Received</div>
+                </div>
+              </div>
+
+              {/* Recent POs List */}
+              <div className="space-y-2">
+                <div className="text-sm font-medium text-zinc-400 mb-3">Recent Purchase Orders</div>
+                {allPurchaseOrders.slice(0, 5).map((po) => (
+                  <div
+                    key={po.id}
+                    onClick={() => handleViewOrder(po)}
+                    className="flex items-center justify-between p-4 rounded-xl bg-white/5 hover:bg-white/10 transition-colors cursor-pointer border border-white/5 hover:border-white/10"
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+                        po.status === 'pending_md_approval' ? 'bg-amber-500/20' :
+                        po.status === 'approved' ? 'bg-emerald-500/20' :
+                        po.status === 'rejected' ? 'bg-red-500/20' :
+                        'bg-cyan-500/20'
+                      }`}>
+                        <ShoppingCart className={`w-5 h-5 ${
+                          po.status === 'pending_md_approval' ? 'text-amber-400' :
+                          po.status === 'approved' ? 'text-emerald-400' :
+                          po.status === 'rejected' ? 'text-red-400' :
+                          'text-cyan-400'
+                        }`} />
+                      </div>
+                      <div>
+                        <div className="font-medium text-white">{po.poNumber}</div>
+                        <div className="text-xs text-zinc-500">
+                          {po.vendorDetails?.name || 'Unknown Vendor'} • {po.items?.length || 0} items
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="font-medium text-white">₹{(po.totalAmount || 0).toLocaleString()}</div>
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${
+                        po.status === 'pending_md_approval' ? 'bg-amber-500/20 text-amber-400' :
+                        po.status === 'approved' ? 'bg-emerald-500/20 text-emerald-400' :
+                        po.status === 'rejected' ? 'bg-red-500/20 text-red-400' :
+                        'bg-cyan-500/20 text-cyan-400'
+                      }`}>
+                        {po.status === 'pending_md_approval' ? 'PENDING' : po.status?.toUpperCase()}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+                {allPurchaseOrders.length === 0 && (
+                  <div className="text-center py-8 text-zinc-500">
+                    <ShoppingCart className="w-10 h-10 mx-auto mb-2 opacity-30" />
+                    <p>No purchase orders yet</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </motion.div>
+        </motion.div>
 
         {/* ════════════════════ ACTIVITY SECTION ════════════════════ */}
         <motion.div variants={fadeInUp} className="mb-8">
