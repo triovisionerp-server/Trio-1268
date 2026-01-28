@@ -21,7 +21,8 @@ import {
   RefreshCw,
   Bell,
   Phone,
-  Mail
+  Mail,
+  Loader2
 } from 'lucide-react';
 import { db } from '@/lib/firebase/client';
 import { 
@@ -39,6 +40,7 @@ import {
   COLLECTIONS,
   POStatus
 } from '@/types/purchase';
+import MDPurchaseOverview from './MDpurchase';
 
 // Firebase collection for materials (same as empStore)
 const FB_MATERIALS = 'inventory_materials';
@@ -72,10 +74,53 @@ interface SupplierItem {
 }
 
 // ==========================================
-// PURCHASE PAGE COMPONENT
+// MAIN PAGE WRAPPER - Routes based on role
 // ==========================================
 
-export default function PurchasePage() {
+export default function PurchasePageWrapper() {
+  const [userRole, setUserRole] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    // Get user role from localStorage
+    const storedUser = localStorage.getItem('currentUser');
+    if (storedUser) {
+      try {
+        const user = JSON.parse(storedUser);
+        setUserRole(user.role?.toLowerCase() || '');
+      } catch {
+        setUserRole('');
+      }
+    }
+    setIsLoading(false);
+  }, []);
+
+  // Show loading while checking role
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-zinc-950">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="w-10 h-10 text-blue-500 animate-spin" />
+          <p className="text-zinc-400 text-sm">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // MD sees the MD Purchase Dashboard (read-only analytics)
+  if (userRole === 'md') {
+    return <MDPurchaseOverview />;
+  }
+
+  // Purchase team and others see the Purchase Management page
+  return <PurchasePage />;
+}
+
+// ==========================================
+// PURCHASE PAGE COMPONENT (For Purchase Team)
+// ==========================================
+
+function PurchasePage() {
   // State for data
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
   const [materials, setMaterials] = useState<MaterialItem[]>([]);
