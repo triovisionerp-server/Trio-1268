@@ -26,13 +26,36 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 // Public routes that don't require authentication
 const PUBLIC_ROUTES = ['/login', '/register', '/forgot-password'];
 
+// Check if user is authenticated via localStorage (simple auth)
+const getLocalUser = () => {
+  if (typeof window === 'undefined') return null;
+  try {
+    const storedUser = localStorage.getItem('currentUser');
+    if (storedUser) {
+      return JSON.parse(storedUser);
+    }
+  } catch {
+    return null;
+  }
+  return null;
+};
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [localUser, setLocalUser] = useState<{ role: string; name: string; email: string } | null>(null);
   const router = useRouter();
   const pathname = usePathname();
+
+  // Check localStorage on mount
+  useEffect(() => {
+    const storedUser = getLocalUser();
+    if (storedUser) {
+      setLocalUser(storedUser);
+    }
+  }, []);
 
   // Listen to auth state changes
   useEffect(() => {
@@ -80,28 +103,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => unsubscribe();
   }, [router]);
 
-  // Route protection
+  // Route protection - Modified to support localStorage auth
   useEffect(() => {
     if (loading) return;
 
     const isPublicRoute = PUBLIC_ROUTES.some(route => pathname?.startsWith(route));
+    const currentLocalUser = getLocalUser();
     
-    if (!user && !isPublicRoute) {
+    // If user is authenticated via localStorage OR Firebase, allow access
+    const isAuthenticated = user || currentLocalUser;
+    
+    if (!isAuthenticated && !isPublicRoute) {
       // Not logged in and trying to access protected route
       router.push('/login');
-    } else if (user && userProfile && isPublicRoute) {
-      // Logged in but on public route - redirect to dashboard
-      const roleConfig = getRoleConfig(userProfile.role);
-      router.push(roleConfig?.dashboardPath || '/');
-    } else if (user && userProfile && !isPublicRoute && pathname) {
-      // Check if user can access this route
-      if (!canAccessRoute(userProfile.role, pathname)) {
-        // Redirect to their dashboard
-        const roleConfig = getRoleConfig(userProfile.role);
-        router.push(roleConfig?.dashboardPath || '/');
-      }
     }
-  }, [user, userProfile, loading, pathname, router]);
+    // Remove auto-redirect from login page - let user stay on login if they want
+    // The login page handles its own redirect after successful login
+  }, [user, userProfile, loading, pathname, router, localUser]);
 
   // Sign in with email/password
   const signIn = async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
