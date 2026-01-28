@@ -87,10 +87,14 @@ export default function PurchasePageWrapper() {
     if (storedUser) {
       try {
         const user = JSON.parse(storedUser);
-        setUserRole(user.role?.toLowerCase() || '');
+        const role = user.role?.toLowerCase()?.trim() || '';
+        console.log('Purchase Page - Detected role:', role); // Debug log
+        setUserRole(role);
       } catch {
-        setUserRole('');
+        setUserRole('purchase'); // Default to purchase if parsing fails
       }
+    } else {
+      setUserRole('purchase'); // Default to purchase if no user
     }
     setIsLoading(false);
   }, []);
@@ -107,12 +111,13 @@ export default function PurchasePageWrapper() {
     );
   }
 
-  // MD sees the MD Purchase Dashboard (read-only analytics)
+  // ONLY MD sees the MD Purchase Dashboard (read-only analytics)
+  // All other roles including 'purchase' see the Purchase Management page
   if (userRole === 'md') {
     return <MDPurchaseOverview />;
   }
 
-  // Purchase team and others see the Purchase Management page
+  // Purchase team and ALL others see the Purchase Management page
   return <PurchasePage />;
 }
 
