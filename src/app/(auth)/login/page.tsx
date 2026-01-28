@@ -16,6 +16,11 @@ const USERS: Record<string, string> = {
   naresh: 'hr123',
   dhathri: 'hr123',
   prasuna: 'hr123',
+  Purchase: 'purchase123',
+  design: 'design123',
+  quality: 'quality123',
+  dispatch: 'dispatch123',
+  viewer: 'viewer123',
   supervisor: 'supervisor123',
   pm: 'pm123',
 };
@@ -29,6 +34,11 @@ const ROLE_DASHBOARD_MAP: Record<string, string> = {
   naresh: '/hr',
   dhathri: '/hr',
   prasuna: '/hr',
+  Purchase: '/purchase',
+  design: '/design',
+  quality: '/quality',
+  dispatch: '/dispatch',
+  viewer: '/viewer',
   supervisor: '/supervisor', // <--- FIXED PATH
   pm: '/pm',
 };
