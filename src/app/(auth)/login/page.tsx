@@ -5,42 +5,58 @@ import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Eye, EyeOff, Mail, Lock, Loader2, AlertCircle, HelpCircle, KeyRound } from 'lucide-react';
+import { Eye, EyeOff, Mail, Lock, Loader2, AlertCircle, HelpCircle, KeyRound, Database } from 'lucide-react';
+import { db } from '@/lib/firebase/client';
+import { collection, getDocs, query, where } from 'firebase/firestore';
 
 const COMPANY_DOMAIN = '@triovisioninternational.com';
 
-const USERS: Record<string, string> = {
-  md: 'md123',
-  admin: 'admin123',
-  naveen: 'hr123',
-  naresh: 'hr123',
-  dhathri: 'hr123',
-  prasuna: 'hr123',
-  Purchase: 'purchase123',
-  design: 'design123',
-  quality: 'quality123',
-  dispatch: 'dispatch123',
-  viewer: 'viewer123',
-  supervisor: 'supervisor123',
-  pm: 'pm123',
+// Fallback hardcoded users (only used if Firebase is unavailable)
+const FALLBACK_USERS: Record<string, { password: string; role: string; name: string }> = {
+  md: { password: 'md123', role: 'md', name: 'Managing Director' },
+  admin: { password: 'admin123', role: 'admin', name: 'Administrator' },
+  naveen: { password: 'hr123', role: 'hr', name: 'Naveen (HR)' },
+  naresh: { password: 'hr123', role: 'hr', name: 'Naresh (HR)' },
+  dhathri: { password: 'hr123', role: 'hr', name: 'Dhathri (HR)' },
+  prasuna: { password: 'hr123', role: 'hr', name: 'Prasuna (HR)' },
+  purchase: { password: 'purchase123', role: 'purchase', name: 'Purchase Team' },
+  design: { password: 'design123', role: 'design', name: 'Design Team' },
+  quality: { password: 'quality123', role: 'quality', name: 'Quality Team' },
+  dispatch: { password: 'dispatch123', role: 'dispatch', name: 'Dispatch Team' },
+  viewer: { password: 'viewer123', role: 'viewer', name: 'Viewer' },
+  supervisor: { password: 'supervisor123', role: 'supervisor', name: 'Supervisor' },
+  pm: { password: 'pm123', role: 'pm', name: 'Project Manager' },
+  tooling: { password: 'tooling123', role: 'tooling', name: 'Tooling Team' },
+  customer: { password: 'customer123', role: 'customer', name: 'Customer Portal' },
+  employee: { password: 'employee123', role: 'employee', name: 'Employee' },
 };
 
-// Role-based dashboard routing map
-// UPDATED: Supervisor goes to /supervisor (Production Floor)
+// Dynamic role-based dashboard routing map
 const ROLE_DASHBOARD_MAP: Record<string, string> = {
+  // Management
   md: '/md',
   admin: '/admin',
-  naveen: '/hr',
-  naresh: '/hr',
-  dhathri: '/hr',
-  prasuna: '/hr',
-  Purchase: '/purchase',
+  pm: '/pm',
+  manager: '/manager',
+  
+  // HR Team
+  hr: '/hr',
+  
+  // Operations
+  supervisor: '/supervisor',
+  employee: '/employee',
+  
+  // Departments
+  purchase: '/purchase',
   design: '/design',
   quality: '/quality',
   dispatch: '/dispatch',
-  viewer: '/viewer',
-  supervisor: '/supervisor', // <--- FIXED PATH
-  pm: '/pm',
+  tooling: '/tooling',
+  customer: '/customer',
+  
+  // Other
+  viewer: '/store',
+  default: '/employee',
 };
 
 export default function LoginPage() {
@@ -52,11 +68,15 @@ export default function LoginPage() {
   const [failedAttempts, setFailedAttempts] = useState(0);
   const [shake, setShake] = useState(false);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [loginSource, setLoginSource] = useState<'firebase' | 'local' | null>(null);
   const router = useRouter();
 
   const fullEmail = emailLocal.includes('@') 
     ? emailLocal 
     : emailLocal + COMPANY_DOMAIN;
+
+  // Normalize username for comparison (lowercase, trim)
+  const normalizedUsername = emailLocal.toLowerCase().trim();
 
   const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     let value = e.target.value;
@@ -73,7 +93,6 @@ export default function LoginPage() {
     const message = `Hello Admin Team,\n\nUser: ${userName}\nEmail: ${fullEmail}\nIssue: Unable to login to ERP system\nFailed Attempts: ${failedAttempts}\n\nPlease assist.\n\nThank you.`;
     const whatsappUrl = `https://wa.me/917981085020?text=${encodeURIComponent(message)}`;
     window.open(whatsappUrl, '_blank');
-
     console.log('Email notification sent to admin about locked account:', fullEmail);
   };
 
@@ -99,62 +118,169 @@ export default function LoginPage() {
     setTimeout(() => setShake(false), 500);
   };
 
+  // Get dashboard path based on role
+  const getDashboardPath = (role: string): string => {
+    const normalizedRole = role.toLowerCase().trim();
+    return ROLE_DASHBOARD_MAP[normalizedRole] || ROLE_DASHBOARD_MAP.default;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setIsLoading(true);
+    setLoginSource(null);
 
-    // 1. Check Dynamic Database (Created by HR/Admin)
-    interface DBUser {
-      id: string;
-      email: string;
-      password: string;
-      name: string;
-      role: string;
-    }
-    const dbUsers: DBUser[] = JSON.parse(localStorage.getItem('erp_users') || "[]");
-    
-    // Match email and password (using temp password 'Trio@2025' for new users)
-    const foundUser = dbUsers.find((u) => u.email === fullEmail && password === u.password);
-
-    // 2. Fallback to Hardcoded Users (for Admin access if DB empty)
-    const isHardcoded = USERS[emailLocal] === password;
-
-    if (foundUser || isHardcoded) {
-      // Determine Role
-      const role = foundUser ? foundUser.role : emailLocal; // Hardcoded uses username as role
-      const name = foundUser ? foundUser.name : "System User";
-
-      // Store user data in localStorage
-      localStorage.setItem('currentUser', JSON.stringify({
-        role,
-        email: foundUser ? foundUser.email : fullEmail,
-        name,
-        id: foundUser ? foundUser.id : `hardcoded-${emailLocal}`,
-      }));
-      localStorage.setItem('currentUserName', name);
+    try {
+      // ========================================
+      // STEP 1: Try Firebase Firestore (Primary - Dynamic Users)
+      // ========================================
+      let foundUser = null;
       
-      setTimeout(() => {
+      try {
+        // Query employees collection by email
+        const employeesRef = collection(db, 'employees');
+        const emailQuery = query(employeesRef, where('email', '==', fullEmail));
+        const emailSnapshot = await getDocs(emailQuery);
+        
+        if (!emailSnapshot.empty) {
+          const userDoc = emailSnapshot.docs[0];
+          const userData = userDoc.data();
+          
+          // Check password (stored in Firestore or default)
+          const storedPassword = userData.password || 'Trio@2025';
+          if (password === storedPassword) {
+            foundUser = {
+              id: userDoc.id,
+              email: userData.email,
+              name: userData.name || userData.displayName || emailLocal,
+              role: userData.role?.toLowerCase() || 'employee',
+              department: userData.department || '',
+              source: 'firebase'
+            };
+            setLoginSource('firebase');
+          }
+        }
+        
+        // Also try querying by username if email didn't match
+        if (!foundUser) {
+          const usernameQuery = query(employeesRef, where('username', '==', normalizedUsername));
+          const usernameSnapshot = await getDocs(usernameQuery);
+          
+          if (!usernameSnapshot.empty) {
+            const userDoc = usernameSnapshot.docs[0];
+            const userData = userDoc.data();
+            
+            const storedPassword = userData.password || 'Trio@2025';
+            if (password === storedPassword) {
+              foundUser = {
+                id: userDoc.id,
+                email: userData.email || fullEmail,
+                name: userData.name || userData.displayName || emailLocal,
+                role: userData.role?.toLowerCase() || 'employee',
+                department: userData.department || '',
+                source: 'firebase'
+              };
+              setLoginSource('firebase');
+            }
+          }
+        }
+      } catch (firebaseError) {
+        console.warn('Firebase query failed, falling back to local auth:', firebaseError);
+      }
+
+      // ========================================
+      // STEP 2: Try localStorage (HR-created users)
+      // ========================================
+      if (!foundUser) {
+        interface DBUser {
+          id: string;
+          email: string;
+          password: string;
+          name: string;
+          role: string;
+        }
+        const dbUsers: DBUser[] = JSON.parse(localStorage.getItem('erp_users') || "[]");
+        const localUser = dbUsers.find((u) => 
+          (u.email === fullEmail || u.email?.toLowerCase() === normalizedUsername) && 
+          password === u.password
+        );
+        
+        if (localUser) {
+          foundUser = {
+            id: localUser.id,
+            email: localUser.email,
+            name: localUser.name,
+            role: localUser.role?.toLowerCase() || 'employee',
+            department: '',
+            source: 'local'
+          };
+          setLoginSource('local');
+        }
+      }
+
+      // ========================================
+      // STEP 3: Fallback to hardcoded users (Admin access)
+      // ========================================
+      if (!foundUser) {
+        const hardcodedUser = FALLBACK_USERS[normalizedUsername];
+        if (hardcodedUser && hardcodedUser.password === password) {
+          foundUser = {
+            id: `system-${normalizedUsername}`,
+            email: fullEmail,
+            name: hardcodedUser.name,
+            role: hardcodedUser.role,
+            department: '',
+            source: 'fallback'
+          };
+          setLoginSource('local');
+        }
+      }
+
+      // ========================================
+      // STEP 4: Process login result
+      // ========================================
+      if (foundUser) {
+        // Store user data in localStorage for session
+        localStorage.setItem('currentUser', JSON.stringify({
+          id: foundUser.id,
+          email: foundUser.email,
+          name: foundUser.name,
+          role: foundUser.role,
+          department: foundUser.department,
+          loginTime: new Date().toISOString(),
+          source: foundUser.source,
+        }));
+        localStorage.setItem('currentUserName', foundUser.name);
+        localStorage.setItem('currentUserRole', foundUser.role);
+        
+        // Get dashboard path and redirect
+        const dashboardPath = getDashboardPath(foundUser.role);
+        
+        console.log(`✅ Login successful: ${foundUser.name} (${foundUser.role}) → ${dashboardPath}`);
+        
+        setTimeout(() => {
+          setIsLoading(false);
+          router.push(dashboardPath);
+        }, 800);
+      } else {
+        // Login failed
+        const newFailedAttempts = failedAttempts + 1;
+        setFailedAttempts(newFailedAttempts);
+        setError('Invalid email or password. Please check your credentials.');
+        setPassword('');
         setIsLoading(false);
-        // Routing using ROLE_DASHBOARD_MAP
-        const dashboardPath = ROLE_DASHBOARD_MAP[role] || '/admin';
-        router.push(dashboardPath);
-      }, 800);
-    } else {
-      // Failed login handling
-      const newFailedAttempts = failedAttempts + 1;
-      setFailedAttempts(newFailedAttempts);
-      setError('Invalid email or password');
-      setPassword('');
+        triggerShake();
+
+        if (newFailedAttempts >= 3) {
+          console.log('ALERT: Account locked for', fullEmail, '- Admin notified');
+        }
+      }
+    } catch (err: unknown) {
+      console.error('Login error:', err);
+      const errorMessage = err instanceof Error ? err.message : 'An error occurred. Please try again.';
+      setError(errorMessage);
       setIsLoading(false);
       triggerShake();
-
-      // Lock account after 3 attempts
-      if (newFailedAttempts >= 3) {
-        console.log('ALERT: Account locked for', fullEmail, '- Admin notified');
-        // Optional: Send WhatsApp alert
-        // requestAdminSupport();
-      }
     }
   };
 
@@ -263,7 +389,7 @@ export default function LoginPage() {
                     type={showPassword ? 'text' : 'password'}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder="••••••••"
+                    placeholder="Enter your password"
                     required
                     disabled={isLoading || failedAttempts >= 3}
                     className="w-full pl-12 pr-12 h-12 bg-white/5 border border-white/10 text-white placeholder:text-zinc-500 rounded-xl focus:bg-white/10 focus:border-blue-500/50 focus:ring-2 focus:ring-blue-500/20 transition-all duration-300 outline-none disabled:opacity-50 disabled:cursor-not-allowed"
@@ -282,6 +408,13 @@ export default function LoginPage() {
                     )}
                   </button>
                 </div>
+                {/* Login source indicator */}
+                {loginSource && (
+                  <p className="text-xs text-green-400 mt-2 flex items-center gap-1">
+                    <Database className="w-3 h-3" />
+                    Authenticated via {loginSource === 'firebase' ? 'Cloud Database' : 'Local System'}
+                  </p>
+                )}
               </motion.div>
 
               <AnimatePresence>
@@ -386,7 +519,7 @@ export default function LoginPage() {
           transition={{ delay: 0.8 }}
           className="text-center mt-8 text-zinc-600 text-sm"
         >
-          <p>© 2025 TRIO ERP System</p>
+          <p>© 2026 TRIO ERP System</p>
           <p className="text-xs mt-1">TrioVision International</p>
         </motion.div>
       </motion.div>
