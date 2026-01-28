@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useRouter } from 'next/navigation';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { 
   LayoutDashboard, 
   ShoppingCart, 
@@ -13,27 +13,87 @@ import {
   Truck, 
   LogOut,
   Cog,
-  Warehouse
+  Warehouse,
+  ClipboardList,
+  Users,
+  FileText
 } from 'lucide-react';
 import { auth, db } from '@/lib/firebase/client';
 import { signOut } from 'firebase/auth';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { COLLECTIONS } from '@/types/purchase';
 
-const MENU = [
-  { name: 'MD Dashboard', path: '/md', icon: LayoutDashboard, showNotification: true },
-  { name: 'Tooling', path: '/md/tooling', icon: Cog },
-  { name: 'Store', path: '/store', icon: Warehouse },  // Store Manager - GRN + Inventory
-  { name: 'Purchase', path: '/purchase', icon: ShoppingCart },  // Purchase Team - Create POs
-  { name: 'Manufacturing', path: '/production', icon: Factory },
-  { name: 'Finished Goods', path: '/fg-store', icon: PackageCheck },
-  { name: 'Dispatch', path: '/dispatch', icon: Truck },
+// ==========================================
+// ROLE-BASED MENU CONFIGURATION
+// ==========================================
+// Each role sees only their relevant menu items
+
+type MenuItem = {
+  name: string;
+  path: string;
+  icon: React.ComponentType<{ className?: string }>;
+  showNotification?: boolean;
+  roles: string[]; // Which roles can see this item
+};
+
+const ALL_MENU_ITEMS: MenuItem[] = [
+  // MD sees everything - top-level overview
+  { name: 'MD Dashboard', path: '/md', icon: LayoutDashboard, showNotification: true, roles: ['md'] },
+  { name: 'Tooling Overview', path: '/md/tooling', icon: Cog, roles: ['md'] },
+  
+  // Project Manager
+  { name: 'PM Dashboard', path: '/pm', icon: ClipboardList, roles: ['pm', 'project_manager'] },
+  
+  // Store/Inventory
+  { name: 'Store', path: '/store', icon: Warehouse, roles: ['md', 'store', 'store_manager', 'inventory'] },
+  { name: 'Data Entry', path: '/empStore', icon: FileText, roles: ['store', 'store_manager', 'inventory', 'data_entry'] },
+  
+  // Purchase Team - their own dashboard
+  { name: 'Purchase', path: '/purchase', icon: ShoppingCart, roles: ['purchase', 'purchase_manager', 'purchase_team'] },
+  
+  // Manufacturing
+  { name: 'Production', path: '/production', icon: Factory, roles: ['md', 'production', 'supervisor', 'manufacturing'] },
+  { name: 'Tooling', path: '/tooling', icon: Cog, roles: ['tooling', 'tool_room'] },
+  
+  // Finished Goods & Dispatch
+  { name: 'Finished Goods', path: '/fg-store', icon: PackageCheck, roles: ['md', 'fg_store', 'dispatch'] },
+  { name: 'Dispatch', path: '/dispatch', icon: Truck, roles: ['md', 'dispatch', 'logistics'] },
+  
+  // HR & Admin
+  { name: 'Employees', path: '/employees', icon: Users, roles: ['md', 'hr', 'admin'] },
 ];
+
+// Helper to get user role from localStorage
+function getUserRole(): string {
+  if (typeof window === 'undefined') return '';
+  const storedUser = localStorage.getItem('currentUser');
+  if (storedUser) {
+    try {
+      const user = JSON.parse(storedUser);
+      return user.role?.toLowerCase()?.trim() || '';
+    } catch {
+      return '';
+    }
+  }
+  return '';
+}
 
 export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const [pendingApprovals, setPendingApprovals] = useState(0);
+  const [userRole, setUserRole] = useState('');
+
+  // Get user role on mount
+  useEffect(() => {
+    setUserRole(getUserRole());
+  }, []);
+
+  // Filter menu based on user role
+  const visibleMenu = useMemo(() => {
+    if (!userRole) return [];
+    return ALL_MENU_ITEMS.filter(item => item.roles.includes(userRole));
+  }, [userRole]);
 
   // Listen for pending MD approvals
   useEffect(() => {
@@ -86,31 +146,37 @@ export default function Sidebar() {
 
       {/* Menu */}
       <nav className="relative flex-1 p-4 space-y-1.5 overflow-y-auto">
-        {MENU.map((item) => {
-          const isActive = isActivePath(item.path);
-          const showRedDot = item.showNotification && pendingApprovals > 0;
-          
-          return (
-            <Link key={item.path} href={item.path}>
-              <div className={`relative flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${
-                isActive 
-                  ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-lg shadow-cyan-500/25' 
-                  : 'text-zinc-400 hover:bg-white/5 hover:text-white hover:border-white/10 border border-transparent'
-              }`}>
-                <item.icon className={`w-4 h-4 ${isActive ? 'text-white' : ''}`} />
-                {item.name}
-                
-                {/* Red notification dot */}
-                {showRedDot && (
-                  <span className="absolute right-3 flex h-2.5 w-2.5">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span>
-                  </span>
-                )}
-              </div>
-            </Link>
-          );
-        })}
+        {visibleMenu.length === 0 ? (
+          <div className="text-zinc-500 text-sm px-4 py-2">
+            No menu items available for your role
+          </div>
+        ) : (
+          visibleMenu.map((item) => {
+            const isActive = isActivePath(item.path);
+            const showRedDot = item.showNotification && pendingApprovals > 0;
+            
+            return (
+              <Link key={item.path} href={item.path}>
+                <div className={`relative flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${
+                  isActive 
+                    ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-lg shadow-cyan-500/25' 
+                    : 'text-zinc-400 hover:bg-white/5 hover:text-white hover:border-white/10 border border-transparent'
+                }`}>
+                  <item.icon className={`w-4 h-4 ${isActive ? 'text-white' : ''}`} />
+                  {item.name}
+                  
+                  {/* Red notification dot */}
+                  {showRedDot && (
+                    <span className="absolute right-3 flex h-2.5 w-2.5">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span>
+                    </span>
+                  )}
+                </div>
+              </Link>
+            );
+          })
+        )}
       </nav>
 
       {/* Footer */}
