@@ -2,8 +2,8 @@
 
 import React, { useMemo } from 'react';
 import { Loader2 } from 'lucide-react';
-import MDPurchaseOverview from './MDpurchase';
-import PurchaseWorkflow from './PurchaseWorkflow';
+import MDPurchaseOverviewNew from './MDPurchaseNew';
+import PurchaseWorkflowNew from './PurchaseWorkflowNew';
 
 // ==========================================
 // MAIN PAGE WRAPPER - Routes based on role
@@ -30,13 +30,13 @@ export default function PurchasePageWrapper() {
 
   // MD sees only the MD Purchase Overview
   if (userRole === 'md') {
-    return <MDPurchaseOverview />;
+    return <MDPurchaseOverviewNew />;
   }
 
   // Purchase roles (add more as needed)
   const purchaseRoles = ['purchase', 'purchase_manager', 'purchase_team'];
   if (purchaseRoles.includes(userRole)) {
-    return <PurchaseWorkflow />;
+    return <PurchaseWorkflowNew />;
   }
 
   // All other roles see unauthorized message

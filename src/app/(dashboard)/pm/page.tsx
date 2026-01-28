@@ -5,13 +5,14 @@ import * as XLSX from 'xlsx';
 import { 
   Save, Upload, Download, Trash2, Plus, RefreshCw, 
   Search, ExternalLink, TrendingUp, Clock, CheckCircle, 
-  Activity, Package, FileText 
+  Activity, Package, FileText, ClipboardList 
 } from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
   PieChart, Pie, Cell 
 } from 'recharts';
 import { motion, AnimatePresence } from 'framer-motion';
+import BOMCreator from './BOMCreator';
 
 // --- EXACT COLUMNS (From your Data Entry HTML) ---
 const COLUMNS = [
@@ -36,6 +37,8 @@ export default function ProjectManagerDashboard() {
   const [chartData, setChartData] = useState<any[]>([]);
   const [statusChart, setStatusChart] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const [showBOMCreator, setShowBOMCreator] = useState(false);
+  const [selectedProject, setSelectedProject] = useState<{ id: string; name: string } | null>(null);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -208,8 +211,23 @@ export default function ProjectManagerDashboard() {
             <h1 className="text-4xl font-light tracking-tight text-white">Project Manager</h1>
             <p className="text-zinc-400 mt-1">Master Production Control</p>
             </div>
-            <div className="flex items-center gap-2 px-4 py-2 bg-green-500/10 border border-green-500/20 rounded-full text-green-400 text-sm font-bold animate-pulse">
+            <div className="flex items-center gap-4">
+              {/* Create BOM Button */}
+              <button
+                onClick={() => {
+                  const projectCode = data.find(d => d.projectCode)?.projectCode || 'NEW-PROJECT';
+                  const projectName = data.find(d => d.projectDescription)?.projectDescription || 'New Project';
+                  setSelectedProject({ id: projectCode, name: projectName });
+                  setShowBOMCreator(true);
+                }}
+                className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-purple-500 to-pink-600 text-white font-semibold rounded-xl hover:opacity-90 transition-opacity"
+              >
+                <ClipboardList className="w-4 h-4" />
+                Create BOM
+              </button>
+              <div className="flex items-center gap-2 px-4 py-2 bg-green-500/10 border border-green-500/20 rounded-full text-green-400 text-sm font-bold animate-pulse">
                 <Activity className="w-4 h-4" /> Live Sync
+              </div>
             </div>
         </div>
 
@@ -372,6 +390,19 @@ export default function ProjectManagerDashboard() {
         </button>
 
       </div>
+
+      {/* BOM Creator Modal */}
+      {selectedProject && (
+        <BOMCreator
+          isOpen={showBOMCreator}
+          onClose={() => {
+            setShowBOMCreator(false);
+            setSelectedProject(null);
+          }}
+          projectId={selectedProject.id}
+          projectName={selectedProject.name}
+        />
+      )}
     </div>
   );
 }
