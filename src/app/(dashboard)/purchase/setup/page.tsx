@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import { db } from '@/lib/firebase/client';
 import { collection, addDoc, getDocs, deleteDoc, doc, query, where } from 'firebase/firestore';
-import { PURCHASE_MATERIALS, generateMaterialCode } from './seedMaterials';
+import { PURCHASE_MATERIALS, generateMaterialCode } from '../seedMaterials';
 
 const FB_MATERIALS = 'inventory_materials';
 
