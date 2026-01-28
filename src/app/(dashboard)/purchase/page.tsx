@@ -24,18 +24,31 @@ function getUserRoleFromStorage(): string {
   return 'purchase';
 }
 
+
 export default function PurchasePageWrapper() {
-  // Use useMemo to compute role once without setState in effect
   const userRole = useMemo(() => getUserRoleFromStorage(), []);
 
-  // ONLY MD sees the MD Purchase Dashboard (read-only analytics)
+  // MD sees only the MD Purchase Overview
   if (userRole === 'md') {
     return <MDPurchaseOverview />;
   }
 
-  // Purchase team sees the complete Purchase Workflow Management
-  return <PurchaseWorkflow />;
+  // Purchase roles (add more as needed)
+  const purchaseRoles = ['purchase', 'purchase_manager', 'purchase_team'];
+  if (purchaseRoles.includes(userRole)) {
+    return <PurchaseWorkflow />;
+  }
+
+  // All other roles see unauthorized message
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-zinc-950">
+      <div className="flex flex-col items-center gap-4">
+        <Loader2 className="w-10 h-10 text-red-500 animate-spin" />
+        <p className="text-zinc-400 text-lg font-semibold">Unauthorized</p>
+        <p className="text-zinc-500 text-sm">You do not have access to the Purchase Management page.</p>
+      </div>
+    </div>
+  );
 }
 
-// Keep Loader2 for potential future use
 export { Loader2 };
