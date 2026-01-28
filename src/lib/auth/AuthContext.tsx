@@ -4,7 +4,7 @@ import { createContext, useContext, useEffect, useState, ReactNode } from 'react
 import { User, onAuthStateChanged, signInWithEmailAndPassword, signOut as firebaseSignOut, createUserWithEmailAndPassword } from 'firebase/auth';
 import { doc, getDoc, setDoc, updateDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase/client';
-import { UserProfile, UserRole, getRoleConfig, canAccessRoute, USER_COLLECTIONS } from '@/types/user';
+import { UserProfile, UserRole, canAccessRoute, USER_COLLECTIONS } from '@/types/user';
 import { useRouter, usePathname } from 'next/navigation';
 
 interface AuthContextType {
@@ -53,7 +53,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const storedUser = getLocalUser();
     if (storedUser) {
-      setLocalUser(storedUser);
+      Promise.resolve().then(() => setLocalUser(storedUser));
     }
   }, []);
 
@@ -306,6 +306,7 @@ export function withAuth<P extends object>(
           }
         }
       }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [loading, user, userProfile, router]);
 
     if (loading) {

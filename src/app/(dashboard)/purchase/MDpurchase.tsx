@@ -9,60 +9,30 @@ import {
   CheckCircle, 
   XCircle,
   AlertTriangle,
-  Send,
   FileText,
   IndianRupee,
   Building2,
-  Search,
   Eye,
-  TrendingUp,
-  TrendingDown,
-  Calendar,
-  BarChart3,
-  PieChart,
-  Users,
-  Truck,
   ArrowUpRight,
   ArrowDownRight,
   Box,
   RefreshCw,
-  Filter,
-  Download,
-  Printer,
-  Phone,
-  Mail,
-  MapPin,
-  ExternalLink,
-  Activity,
-  Zap,
-  Target,
   Layers,
-  Warehouse,
   ClipboardList,
-  Receipt,
-  CreditCard,
   X
 } from 'lucide-react';
 import { db } from '@/lib/firebase/client';
 import { 
   collection, 
-  onSnapshot,
-  query,
-  orderBy,
-  limit,
-  where,
-  Timestamp
+  onSnapshot
 } from 'firebase/firestore';
 import { 
   PurchaseOrder, 
-  POItem, 
-  VendorDetails,
   COLLECTIONS,
-  POStatus,
-  MD_APPROVAL_THRESHOLD
+  POStatus
 } from '@/types/purchase';
 import {
-  AreaChart, Area, BarChart, Bar, PieChart as RechartsPie, Pie, Cell,
+  AreaChart, Area, PieChart as RechartsPie, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
 } from 'recharts';
 
@@ -118,6 +88,7 @@ export default function MDPurchaseOverview() {
   // State for data
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
   const [materials, setMaterials] = useState<MaterialItem[]>([]);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [suppliers, setSuppliers] = useState<SupplierItem[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -815,7 +786,7 @@ export default function MDPurchaseOverview() {
               <p className="text-xs text-zinc-500 mt-0.5">Material category breakdown</p>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
-              {categoryBreakdown.map((cat, index) => (
+              {categoryBreakdown.map((cat) => (
                 <div
                   key={cat.name}
                   className="p-4 rounded-xl bg-white/5 border border-white/10 text-center"
