@@ -328,14 +328,14 @@ export const MD_APPROVAL_THRESHOLD = 50000; // ₹50,000
 
 export const COLLECTIONS = {
   INVENTORY: 'inventory',
-  MATERIALS: 'materials',
+  MATERIALS: 'inventory_materials',
   PURCHASE_ORDERS: 'purchase_orders',
   PURCHASE_REQUESTS: 'purchase_requests',
   BILL_OF_MATERIALS: 'bill_of_materials',
   ENQUIRIES: 'enquiries',
   GOODS_RECEIPTS: 'goods_receipts',
   VENDORS: 'vendors',
-  SUPPLIERS: 'suppliers',
+  SUPPLIERS: 'inventory_suppliers',
   AUDIT_LOG: 'audit_log',
 } as const;
 

@@ -23,13 +23,13 @@ import {
 // COLLECTION NAMES (Centralized)
 // ==========================================
 export const COLLECTIONS = {
-  // Core Inventory
+  // Core Inventory (aligned with useInventoryData.ts)
   MATERIALS: 'inventory_materials',
-  SUPPLIERS: 'suppliers',
+  SUPPLIERS: 'inventory_suppliers',  // Fixed: was 'suppliers', now matches useInventoryData
   
-  // Issue & Purchase Records (from empStore)
-  ISSUE_RECORDS: 'issue_records',
-  PURCHASE_ENTRIES: 'purchase_entries',
+  // Issue & Purchase Records (aligned with useInventoryData.ts)
+  ISSUE_RECORDS: 'inventory_issue_records',    // Fixed: was 'issue_records'
+  PURCHASE_ENTRIES: 'inventory_purchase_entries', // Fixed: was 'purchase_entries'
   
   // Procurement Workflow
   MATERIAL_REQUESTS: 'material_requests',      // From Supervisor/Store

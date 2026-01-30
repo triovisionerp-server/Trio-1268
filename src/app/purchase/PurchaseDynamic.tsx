@@ -194,10 +194,18 @@ export default function PurchaseDynamic() {
     // Subscribe to all data streams
     const unsubscribers: (() => void)[] = [];
     
+    // Set a timeout to stop loading even if data is slow
+    const loadingTimeout = setTimeout(() => {
+      console.log('[Purchase] Loading timeout - forcing ready state');
+      setLoading(false);
+    }, 5000);
+    
     // Material Requests (from Supervisor/Store)
     unsubscribers.push(
       subscribeToMaterialRequests((data) => {
+        console.log('[Purchase] Material Requests loaded:', data.length);
         setMaterialRequests(data);
+        clearTimeout(loadingTimeout);
         setLoading(false);
       })
     );
@@ -205,6 +213,7 @@ export default function PurchaseDynamic() {
     // Purchase Requisitions
     unsubscribers.push(
       subscribeToPRs((data) => {
+        console.log('[Purchase] PRs loaded:', data.length);
         setPurchaseRequisitions(data);
       })
     );
@@ -212,6 +221,7 @@ export default function PurchaseDynamic() {
     // Purchase Orders
     unsubscribers.push(
       subscribeToPOs((data) => {
+        console.log('[Purchase] POs loaded:', data.length);
         setPurchaseOrders(data);
       })
     );
@@ -219,6 +229,7 @@ export default function PurchaseDynamic() {
     // Goods Receipts
     unsubscribers.push(
       subscribeToGRNs((data) => {
+        console.log('[Purchase] GRNs loaded:', data.length);
         setGoodsReceipts(data);
       })
     );
@@ -226,6 +237,7 @@ export default function PurchaseDynamic() {
     // Invoices
     unsubscribers.push(
       subscribeToInvoices((data) => {
+        console.log('[Purchase] Invoices loaded:', data.length);
         setInvoices(data);
       })
     );
