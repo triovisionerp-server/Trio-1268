@@ -352,21 +352,41 @@ export default function StorePage() {
 
   return (
     <div className="min-h-screen bg-[#020202] text-white p-6">
-      {/* Back Navigation */}
-      <div className="flex items-center gap-4 mb-6">
+      {/* Top Navigation Bar */}
+      <div className="flex items-center justify-between bg-zinc-900/50 border border-zinc-800 rounded-2xl p-4 mb-6">
+        <div className="flex items-center gap-4">
+          <button
+            onClick={() => router.push('/md')}
+            className="flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-xl text-zinc-400 hover:text-white transition-all"
+          >
+            <Home className="w-4 h-4" />
+            <span className="text-sm font-medium">Dashboard</span>
+          </button>
+          <button
+            onClick={() => router.push('/purchase')}
+            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 rounded-xl text-white transition-all"
+          >
+            <Truck className="w-4 h-4" />
+            <span className="text-sm font-medium">Purchase</span>
+          </button>
+          <button
+            onClick={() => router.push('/empStore')}
+            className="flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-xl text-zinc-400 hover:text-white transition-all"
+          >
+            <FileCheck className="w-4 h-4" />
+            <span className="text-sm font-medium">Data Entry</span>
+          </button>
+        </div>
+        
         <button
-          onClick={() => router.back()}
-          className="flex items-center gap-2 px-3 py-2 bg-zinc-800/50 hover:bg-zinc-700/50 border border-zinc-700 rounded-lg text-sm text-zinc-300 hover:text-white transition-all"
+          onClick={() => {
+            localStorage.removeItem('currentUser');
+            router.push('/login');
+          }}
+          className="flex items-center gap-2 px-4 py-2 bg-red-500/10 hover:bg-red-500/20 rounded-xl text-red-400 transition-all"
         >
-          <ArrowLeft className="w-4 h-4" />
-          Back
-        </button>
-        <button
-          onClick={() => router.push('/md')}
-          className="flex items-center gap-2 px-3 py-2 bg-zinc-800/50 hover:bg-zinc-700/50 border border-zinc-700 rounded-lg text-sm text-zinc-300 hover:text-white transition-all"
-        >
-          <Home className="w-4 h-4" />
-          Dashboard
+          <XCircle className="w-4 h-4" />
+          <span className="text-sm font-medium">Logout</span>
         </button>
       </div>
 

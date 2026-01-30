@@ -379,8 +379,8 @@ export const formatCurrency = (amount: number): string => {
   }).format(amount);
 };
 
-// MD Approval threshold (configurable)
-export const MD_APPROVAL_THRESHOLD = 0;
+// MD Approval threshold (configurable) - ₹50,000
+export const MD_APPROVAL_THRESHOLD = 50000;
 
 // ==========================================
 // 1. MATERIAL REQUESTS (Supervisor/Store → Purchase)

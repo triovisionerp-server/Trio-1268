@@ -7,12 +7,17 @@
 // Real-time Firebase sync across all modules
 
 import React, { useState, useEffect, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   FileText,
   ShoppingCart,
   Receipt,
   CheckCircle2,
+  Home,
+  Warehouse,
+  LogOut,
   Clock,
   AlertTriangle,
   Search,
@@ -2287,8 +2292,70 @@ export default function PurchaseDynamic() {
     );
   }
   
+  const router = useRouter();
+  
+  const handleLogout = () => {
+    localStorage.removeItem('currentUser');
+    router.push('/login');
+  };
+  
   return (
     <div className="min-h-screen p-6 space-y-6">
+      {/* Top Navigation Bar */}
+      <motion.div
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="flex items-center justify-between bg-zinc-900/50 border border-zinc-800 rounded-2xl p-4"
+      >
+        <div className="flex items-center gap-4">
+          <Link href="/store">
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              className="flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-xl text-zinc-400 hover:text-white transition-colors"
+            >
+              <Warehouse className="w-4 h-4" />
+              <span className="text-sm font-medium">Store</span>
+            </motion.button>
+          </Link>
+          <Link href="/empStore">
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              className="flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-xl text-zinc-400 hover:text-white transition-colors"
+            >
+              <FileText className="w-4 h-4" />
+              <span className="text-sm font-medium">Data Entry</span>
+            </motion.button>
+          </Link>
+          <Link href="/md">
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              className="flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-xl text-zinc-400 hover:text-white transition-colors"
+            >
+              <Home className="w-4 h-4" />
+              <span className="text-sm font-medium">MD Dashboard</span>
+            </motion.button>
+          </Link>
+        </div>
+        
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-zinc-500">
+            {currentUser.name} • <span className="capitalize">{currentUser.role}</span>
+          </span>
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={handleLogout}
+            className="flex items-center gap-2 px-4 py-2 bg-red-500/10 hover:bg-red-500/20 rounded-xl text-red-400 transition-colors"
+          >
+            <LogOut className="w-4 h-4" />
+            <span className="text-sm font-medium">Logout</span>
+          </motion.button>
+        </div>
+      </motion.div>
+      
       {/* Header */}
       <motion.div
         initial={{ opacity: 0, y: -20 }}
@@ -2309,10 +2376,22 @@ export default function PurchaseDynamic() {
           </div>
         </div>
         
-        {/* Notifications Bell */}
-        <div className="relative">
+        {/* Quick Actions + Notifications */}
+        <div className="flex items-center gap-3">
           <motion.button
-            whileHover={{ scale: 1.05 }}
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={() => setShowDirectPOModal(true)}
+            className="px-4 py-2.5 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white rounded-xl flex items-center gap-2 font-medium shadow-lg shadow-cyan-500/20"
+          >
+            <Plus className="w-4 h-4" />
+            Create PO
+          </motion.button>
+          
+          {/* Notifications Bell */}
+          <div className="relative">
+            <motion.button
+              whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             onClick={() => setShowNotifications(!showNotifications)}
             className="w-12 h-12 bg-zinc-800 hover:bg-zinc-700 rounded-xl flex items-center justify-center relative"
@@ -2365,6 +2444,7 @@ export default function PurchaseDynamic() {
               </motion.div>
             )}
           </AnimatePresence>
+        </div>
         </div>
       </motion.div>
       
