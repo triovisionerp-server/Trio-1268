@@ -150,6 +150,7 @@ export default function PurchaseDynamic() {
   // Modal states
   const [showCreatePRModal, setShowCreatePRModal] = useState(false);
   const [showCreatePOModal, setShowCreatePOModal] = useState(false);
+  const [showDirectPOModal, setShowDirectPOModal] = useState(false);
   const [showCreateGRNModal, setShowCreateGRNModal] = useState(false);
   const [showCreateInvoiceModal, setShowCreateInvoiceModal] = useState(false);
   const [showRejectModal, setShowRejectModal] = useState(false);
@@ -511,6 +512,97 @@ export default function PurchaseDynamic() {
       setShowCreatePOModal(false);
     } catch (error) {
       console.error('Error creating PO:', error);
+      alert('Failed to create PO');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Direct PO Creation (without PR)
+  const handleCreateDirectPO = async (data: {
+    supplierId: string;
+    supplierName: string;
+    items: { materialId: string; quantity: number; unitPrice: number }[];
+    paymentTerms: string;
+    deliveryTerms: string;
+    expectedDelivery: string;
+    notes?: string;
+  }) => {
+    try {
+      setIsSubmitting(true);
+      
+      const supplier = suppliers.find(s => s.id === data.supplierId);
+      
+      const poItems: POItem[] = data.items.map(item => {
+        const material = materials.find(m => m.id === item.materialId);
+        const totalPrice = item.quantity * item.unitPrice;
+        return {
+          materialId: item.materialId,
+          materialCode: material?.code || '',
+          materialName: material?.name || '',
+          quantity: item.quantity,
+          unit: material?.unit || 'Pcs',
+          unitPrice: item.unitPrice,
+          totalPrice,
+          taxPercent: 18,
+          taxAmount: totalPrice * 0.18,
+          receivedQty: 0,
+          pendingQty: item.quantity,
+        };
+      });
+      
+      const subtotal = poItems.reduce((sum, item) => sum + item.totalPrice, 0);
+      const taxPercent = 18;
+      const taxAmount = subtotal * (taxPercent / 100);
+      const totalAmount = subtotal + taxAmount;
+      
+      await createPO({
+        vendorId: data.supplierId,
+        vendorName: data.supplierName,
+        vendorContact: supplier?.contact || '',
+        vendorEmail: supplier?.email || '',
+        vendorAddress: supplier?.address || '',
+        items: poItems,
+        subtotal,
+        taxPercent,
+        taxAmount,
+        otherCharges: 0,
+        totalAmount,
+        status: totalAmount >= MD_APPROVAL_THRESHOLD ? 'pending_md_approval' : 'approved',
+        approvalSteps: [],
+        paymentTerms: data.paymentTerms,
+        deliveryTerms: data.deliveryTerms,
+        expectedDelivery: data.expectedDelivery,
+        createdBy: currentUser.id,
+        createdByName: currentUser.name,
+        requiresMDApproval: totalAmount >= MD_APPROVAL_THRESHOLD,
+        mdApprovalThreshold: MD_APPROVAL_THRESHOLD,
+        notes: data.notes,
+      });
+      
+      if (totalAmount >= MD_APPROVAL_THRESHOLD) {
+        const notifyMD = window.confirm(
+          `✅ PO created successfully!\n\n` +
+          `Amount: ${formatCurrency(totalAmount)}\n` +
+          `Status: Pending MD Approval\n\n` +
+          `Would you like to notify MD via WhatsApp?`
+        );
+        
+        if (notifyMD) {
+          const message = `🔔 *New PO Requires Approval*\n\n` +
+            `Amount: ${formatCurrency(totalAmount)}\n` +
+            `Vendor: ${data.supplierName}\n` +
+            `Items: ${data.items.length} items\n` +
+            `Created By: ${currentUser.name}\n\n` +
+            `Please review at:\nhttps://trio-1268.vercel.app/md`;
+          window.open(`https://wa.me/917981085020?text=${encodeURIComponent(message)}`, '_blank');
+        }
+      } else {
+        alert('✅ PO created and auto-approved!');
+      }
+      setShowDirectPOModal(false);
+    } catch (error) {
+      console.error('Error creating direct PO:', error);
       alert('Failed to create PO');
     } finally {
       setIsSubmitting(false);
@@ -1417,15 +1509,27 @@ export default function PurchaseDynamic() {
             </select>
           </div>
           
-          <motion.button
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            onClick={() => setShowCreatePOModal(true)}
-            className="px-4 py-2.5 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-500 hover:to-green-600 text-white rounded-xl flex items-center gap-2 font-medium shadow-lg shadow-green-500/20"
-          >
-            <Plus className="w-4 h-4" />
-            Create PO
-          </motion.button>
+          <div className="flex items-center gap-2">
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={() => setShowDirectPOModal(true)}
+              className="px-4 py-2.5 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white rounded-xl flex items-center gap-2 font-medium shadow-lg shadow-cyan-500/20"
+            >
+              <Plus className="w-4 h-4" />
+              Direct PO
+            </motion.button>
+            
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={() => setShowCreatePOModal(true)}
+              className="px-4 py-2.5 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-500 hover:to-green-600 text-white rounded-xl flex items-center gap-2 font-medium shadow-lg shadow-green-500/20"
+            >
+              <Plus className="w-4 h-4" />
+              PO from PR
+            </motion.button>
+          </div>
         </div>
         
         {/* POs Table */}
@@ -2447,6 +2551,41 @@ export default function PurchaseDynamic() {
         )}
       </AnimatePresence>
       
+      {/* Direct PO Modal */}
+      <AnimatePresence>
+        {showDirectPOModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+            onClick={() => setShowDirectPOModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-3xl bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden max-h-[90vh] overflow-y-auto"
+            >
+              <div className="p-6 border-b border-zinc-800 bg-gradient-to-r from-cyan-500/10 to-blue-500/10 sticky top-0">
+                <h3 className="text-xl font-bold text-white">Create Direct Purchase Order</h3>
+                <p className="text-sm text-zinc-400 mt-1">
+                  Create a PO directly without a PR. For urgent purchases.
+                </p>
+              </div>
+              <DirectPOForm
+                materials={materials}
+                suppliers={suppliers}
+                onSubmit={handleCreateDirectPO}
+                onCancel={() => setShowDirectPOModal(false)}
+                isSubmitting={isSubmitting}
+              />
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      
       {/* Create GRN Modal */}
       <AnimatePresence>
         {showCreateGRNModal && selectedItem && selectedItemType === 'order' && (
@@ -3071,6 +3210,262 @@ function CreateInvoiceForm({
           className="flex-1 px-4 py-3 bg-cyan-600 hover:bg-cyan-700 disabled:bg-cyan-600/50 text-white rounded-xl font-medium transition-colors disabled:cursor-not-allowed"
         >
           {isSubmitting ? 'Creating...' : 'Create Invoice'}
+        </button>
+      </div>
+    </div>
+  );
+}
+// Direct PO Form Component (without PR)
+function DirectPOForm({ 
+  materials,
+  suppliers,
+  onSubmit, 
+  onCancel, 
+  isSubmitting 
+}: { 
+  materials: Material[];
+  suppliers: Supplier[];
+  onSubmit: (data: {
+    supplierId: string;
+    supplierName: string;
+    items: { materialId: string; quantity: number; unitPrice: number }[];
+    paymentTerms: string;
+    deliveryTerms: string;
+    expectedDelivery: string;
+    notes?: string;
+  }) => void;
+  onCancel: () => void;
+  isSubmitting: boolean;
+}) {
+  const [supplierId, setSupplierId] = useState('');
+  const [items, setItems] = useState([{ materialId: '', quantity: 1, unitPrice: 0 }]);
+  const [paymentTerms, setPaymentTerms] = useState('Net 30');
+  const [deliveryTerms, setDeliveryTerms] = useState('FOB Destination');
+  const [expectedDelivery, setExpectedDelivery] = useState('');
+  const [notes, setNotes] = useState('');
+  
+  const selectedSupplier = suppliers.find(s => s.id === supplierId);
+  
+  const addItem = () => setItems([...items, { materialId: '', quantity: 1, unitPrice: 0 }]);
+  const removeItem = (index: number) => setItems(items.filter((_, i) => i !== index));
+  
+  const updateItem = (index: number, field: string, value: string | number) => {
+    const newItems = [...items];
+    if (field === 'materialId') {
+      const material = materials.find(m => m.id === value);
+      newItems[index] = {
+        ...newItems[index],
+        materialId: value as string,
+        unitPrice: material?.purchase_price || 0
+      };
+    } else {
+      newItems[index] = { ...newItems[index], [field]: value };
+    }
+    setItems(newItems);
+  };
+  
+  const subtotal = items.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
+  const taxAmount = subtotal * 0.18;
+  const totalAmount = subtotal + taxAmount;
+  
+  const handleSubmit = () => {
+    if (!supplierId) {
+      alert('Please select a supplier');
+      return;
+    }
+    const validItems = items.filter(item => item.materialId && item.quantity > 0);
+    if (validItems.length === 0) {
+      alert('Please add at least one item');
+      return;
+    }
+    if (!expectedDelivery) {
+      alert('Please select expected delivery date');
+      return;
+    }
+    
+    onSubmit({
+      supplierId,
+      supplierName: selectedSupplier?.name || '',
+      items: validItems,
+      paymentTerms,
+      deliveryTerms,
+      expectedDelivery,
+      notes,
+    });
+  };
+  
+  return (
+    <div className="p-6 space-y-6">
+      {/* Supplier Selection */}
+      <div>
+        <label className="block text-sm font-medium text-zinc-300 mb-2">Supplier *</label>
+        <select
+          value={supplierId}
+          onChange={(e) => setSupplierId(e.target.value)}
+          className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white outline-none"
+        >
+          <option value="">Select Supplier</option>
+          {suppliers.map(s => (
+            <option key={s.id} value={s.id}>{s.name}</option>
+          ))}
+        </select>
+        {selectedSupplier && (
+          <p className="text-xs text-zinc-500 mt-1">
+            Contact: {selectedSupplier.contact} | Email: {selectedSupplier.email || 'N/A'}
+          </p>
+        )}
+      </div>
+      
+      {/* Items */}
+      <div>
+        <label className="block text-sm font-medium text-zinc-300 mb-3">Items *</label>
+        {items.map((item, index) => (
+          <div key={index} className="flex gap-3 mb-3 items-end">
+            <div className="flex-1">
+              <select
+                value={item.materialId}
+                onChange={(e) => updateItem(index, 'materialId', e.target.value)}
+                className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white outline-none"
+              >
+                <option value="">Select Material</option>
+                {materials.map(m => (
+                  <option key={m.id} value={m.id}>{m.name} ({m.code})</option>
+                ))}
+              </select>
+            </div>
+            <div className="w-24">
+              <input
+                type="number"
+                min={1}
+                value={item.quantity}
+                onChange={(e) => updateItem(index, 'quantity', parseInt(e.target.value) || 1)}
+                className="w-full px-3 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white outline-none"
+                placeholder="Qty"
+              />
+            </div>
+            <div className="w-32">
+              <input
+                type="number"
+                min={0}
+                step={0.01}
+                value={item.unitPrice}
+                onChange={(e) => updateItem(index, 'unitPrice', parseFloat(e.target.value) || 0)}
+                className="w-full px-3 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white outline-none"
+                placeholder="Price"
+              />
+            </div>
+            <div className="w-28 text-right">
+              <div className="px-3 py-3 bg-zinc-800/50 border border-zinc-700 rounded-xl text-green-400 font-medium">
+                {formatCurrency(item.quantity * item.unitPrice)}
+              </div>
+            </div>
+            {items.length > 1 && (
+              <button
+                onClick={() => removeItem(index)}
+                className="px-3 py-3 bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded-xl"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            )}
+          </div>
+        ))}
+        <button
+          onClick={addItem}
+          className="w-full py-3 border-2 border-dashed border-zinc-700 hover:border-blue-500 text-zinc-400 hover:text-blue-400 rounded-xl flex items-center justify-center gap-2 transition-colors"
+        >
+          <Plus className="w-4 h-4" /> Add Item
+        </button>
+      </div>
+      
+      {/* Totals */}
+      <div className="bg-zinc-800/50 rounded-xl p-4 space-y-2">
+        <div className="flex justify-between text-sm">
+          <span className="text-zinc-400">Subtotal</span>
+          <span className="text-white">{formatCurrency(subtotal)}</span>
+        </div>
+        <div className="flex justify-between text-sm">
+          <span className="text-zinc-400">GST (18%)</span>
+          <span className="text-white">{formatCurrency(taxAmount)}</span>
+        </div>
+        <div className="flex justify-between text-lg font-bold border-t border-zinc-700 pt-2 mt-2">
+          <span className="text-white">Total</span>
+          <span className="text-green-400">{formatCurrency(totalAmount)}</span>
+        </div>
+        {totalAmount >= 50000 && (
+          <p className="text-xs text-yellow-400 mt-2">
+            ⚠️ Amount exceeds ₹50,000 - MD approval required
+          </p>
+        )}
+      </div>
+      
+      {/* Terms & Delivery */}
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="block text-sm font-medium text-zinc-300 mb-2">Payment Terms</label>
+          <select
+            value={paymentTerms}
+            onChange={(e) => setPaymentTerms(e.target.value)}
+            className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white outline-none"
+          >
+            <option value="Net 30">Net 30</option>
+            <option value="Net 60">Net 60</option>
+            <option value="Net 90">Net 90</option>
+            <option value="Advance">100% Advance</option>
+            <option value="50% Advance">50% Advance</option>
+            <option value="COD">Cash on Delivery</option>
+          </select>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-zinc-300 mb-2">Delivery Terms</label>
+          <select
+            value={deliveryTerms}
+            onChange={(e) => setDeliveryTerms(e.target.value)}
+            className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white outline-none"
+          >
+            <option value="FOB Destination">FOB Destination</option>
+            <option value="FOB Origin">FOB Origin</option>
+            <option value="Ex-Works">Ex-Works</option>
+            <option value="Delivered">Delivered</option>
+          </select>
+        </div>
+      </div>
+      
+      <div>
+        <label className="block text-sm font-medium text-zinc-300 mb-2">Expected Delivery *</label>
+        <input
+          type="date"
+          value={expectedDelivery}
+          onChange={(e) => setExpectedDelivery(e.target.value)}
+          className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white outline-none"
+        />
+      </div>
+      
+      {/* Notes */}
+      <div>
+        <label className="block text-sm font-medium text-zinc-300 mb-2">Notes</label>
+        <textarea
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          placeholder="Additional notes for this PO..."
+          rows={2}
+          className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white placeholder:text-zinc-500 outline-none resize-none"
+        />
+      </div>
+      
+      {/* Actions */}
+      <div className="flex gap-3 pt-4 border-t border-zinc-800">
+        <button
+          onClick={onCancel}
+          className="flex-1 px-4 py-3 bg-zinc-800 hover:bg-zinc-700 text-white rounded-xl font-medium transition-colors"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={handleSubmit}
+          disabled={isSubmitting}
+          className="flex-1 px-4 py-3 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 disabled:opacity-50 text-white rounded-xl font-medium transition-colors disabled:cursor-not-allowed"
+        >
+          {isSubmitting ? 'Creating PO...' : 'Create Purchase Order'}
         </button>
       </div>
     </div>

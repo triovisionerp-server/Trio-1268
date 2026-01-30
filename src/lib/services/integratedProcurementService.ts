@@ -380,7 +380,7 @@ export const formatCurrency = (amount: number): string => {
 };
 
 // MD Approval threshold (configurable)
-export const MD_APPROVAL_THRESHOLD = 50000;
+export const MD_APPROVAL_THRESHOLD = 0;
 
 // ==========================================
 // 1. MATERIAL REQUESTS (Supervisor/Store → Purchase)
