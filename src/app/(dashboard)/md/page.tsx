@@ -6,9 +6,9 @@ import {
   ArrowRight, Activity, CheckCircle, AlertTriangle, Clock,
   X, Cog, Building2, Warehouse, Bell, Package, Phone, Mail,
   MapPin, FileText, ShoppingCart, User, Building, Eye, Boxes,
-  LayoutDashboard
+  LayoutDashboard, FileCheck
 } from "lucide-react";
-import MDPurchaseOverview from '../purchase/MDpurchase';
+import MDPurchaseApproval from './MDPurchaseApproval';
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { db } from '@/lib/firebase/client';
@@ -166,10 +166,12 @@ const ACTIVITIES = [
 // MAIN COMPONENT
 // ═══════════════════════════════════════════════════════════════
 type ModalType = "shed1" | "shed2" | null;
+type ViewType = "dashboard" | "approvals";
 
 export default function MDDashboard() {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [activeModal, setActiveModal] = useState<ModalType>(null);
+  const [activeView, setActiveView] = useState<ViewType>("dashboard");
   const [showNotifications, setShowNotifications] = useState(false);
   const [pendingOrders, setPendingOrders] = useState<PurchaseOrder[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<PurchaseOrder | null>(null);
@@ -335,6 +337,12 @@ export default function MDDashboard() {
     ALL_DEPARTMENTS.filter(d => d.status === "running").reduce((sum, d) => sum + d.efficiency, 0) / runningDepts
   );
   const overallOEE = Math.round((92 * 88 * 96) / 10000);
+
+  // View Tab Data
+  const views = [
+    { id: 'dashboard' as ViewType, label: 'Dashboard', icon: LayoutDashboard },
+    { id: 'approvals' as ViewType, label: 'Purchase Approvals', icon: FileCheck, badge: pendingOrders.length },
+  ];
 
   return (
     <div className="relative min-h-screen w-full bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-950 overflow-x-hidden">
@@ -636,15 +644,17 @@ export default function MDDashboard() {
 
                   {pendingOrders.length > 0 && (
                     <div className="p-3 border-t border-white/10">
-                      <Link href="/md/approvals">
-                        <motion.button
-                          className="w-full py-2.5 rounded-xl bg-cyan-500/20 text-cyan-400 text-sm font-medium hover:bg-cyan-500/30 transition-colors"
-                          whileHover={{ scale: 1.02 }}
-                          whileTap={{ scale: 0.98 }}
-                        >
-                          View All Approvals
-                        </motion.button>
-                      </Link>
+                      <motion.button
+                        onClick={() => {
+                          setShowNotifications(false);
+                          setActiveView('approvals');
+                        }}
+                        className="w-full py-2.5 rounded-xl bg-cyan-500/20 text-cyan-400 text-sm font-medium hover:bg-cyan-500/30 transition-colors"
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                      >
+                        View All Approvals
+                      </motion.button>
                     </div>
                   )}
                 </motion.div>
@@ -653,6 +663,61 @@ export default function MDDashboard() {
           </motion.div>
         </motion.header>
 
+        {/* ════════════════════ VIEW TABS ════════════════════ */}
+        <motion.div variants={fadeInUp} className="mb-6">
+          <div className="flex items-center gap-2 p-1 rounded-2xl bg-white/[0.03] border border-white/[0.06] w-fit">
+            {views.map((view) => (
+              <motion.button
+                key={view.id}
+                onClick={() => setActiveView(view.id)}
+                className={`relative flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-medium transition-all duration-300 ${
+                  activeView === view.id
+                    ? 'bg-gradient-to-r from-cyan-500/20 to-blue-500/20 text-white border border-cyan-500/30'
+                    : 'text-zinc-400 hover:text-white hover:bg-white/5'
+                }`}
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+              >
+                <view.icon className={`w-4 h-4 ${activeView === view.id ? 'text-cyan-400' : ''}`} />
+                {view.label}
+                {view.badge !== undefined && view.badge > 0 && (
+                  <motion.span
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                      activeView === view.id
+                        ? 'bg-amber-500 text-white'
+                        : 'bg-amber-500/20 text-amber-400'
+                    }`}
+                  >
+                    {view.badge}
+                  </motion.span>
+                )}
+              </motion.button>
+            ))}
+          </div>
+        </motion.div>
+
+        {/* ════════════════════ VIEW CONTENT ════════════════════ */}
+        <AnimatePresence mode="wait">
+          {activeView === 'approvals' ? (
+            <motion.div
+              key="approvals"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              transition={{ duration: 0.3 }}
+            >
+              <MDPurchaseApproval />
+            </motion.div>
+          ) : (
+            <motion.div
+              key="dashboard"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              transition={{ duration: 0.3 }}
+            >
         {/* ════════════════════ MAIN CONTENT ════════════════════ */}
         {/* ════════════════════ KPI CARDS ════════════════════ */}
         <motion.div variants={staggerContainer} className="grid grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-5 mb-8">
@@ -1117,6 +1182,10 @@ export default function MDDashboard() {
             </div>
           </motion.div>
         </motion.div>
+
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Footer */}
         <motion.footer 

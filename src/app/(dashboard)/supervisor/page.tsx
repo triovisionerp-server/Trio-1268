@@ -4,8 +4,9 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   HardHat, Save, 
-  ChevronRight, Sparkles, Target, X
+  ChevronRight, Sparkles, Target, X, Package, ClipboardList
 } from 'lucide-react';
+import SupervisorMaterialRequest from './SupervisorMaterialRequest';
 
 // Animation variants
 const fadeInUp = {
@@ -31,11 +32,14 @@ const NORMS: Record<string, number> = {
   "default": 60
 };
 
+type TabType = 'tasks' | 'materials';
+
 export default function SupervisorPage() {
   const [tasks, setTasks] = useState<any[]>([]);
   const [selectedJob, setSelectedJob] = useState<any>(null);
   const [input, setInput] = useState({ sqmDone: 0, hoursSpent: 0, manpower: 0 });
   const [currentUser, setCurrentUser] = useState('');
+  const [activeTab, setActiveTab] = useState<TabType>('tasks');
 
   useEffect(() => {
     // 1. SIMULATE LOGIN (In real app, this comes from Auth)
@@ -123,8 +127,8 @@ export default function SupervisorPage() {
             <HardHat className="w-7 h-7 text-white" />
           </div>
           <div>
-             <h1 className="text-3xl font-bold tracking-tight">My Tasks</h1>
-             <p className="text-zinc-400">Assigned Work Orders</p>
+             <h1 className="text-3xl font-bold tracking-tight">Supervisor Dashboard</h1>
+             <p className="text-zinc-400">Tasks & Material Requests</p>
           </div>
         </div>
         <motion.div 
@@ -143,37 +147,85 @@ export default function SupervisorPage() {
         </motion.div>
       </motion.div>
 
-      {/* TASK LIST */}
-      <motion.div 
-        variants={staggerContainer}
-        initial="hidden"
-        animate="visible"
-        className="grid grid-cols-1 gap-4"
+      {/* TABS */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.1 }}
+        className="flex gap-2 bg-zinc-900/50 p-2 rounded-2xl border border-zinc-800"
       >
-        {tasks.length === 0 ? (
-             <motion.div 
-               initial={{ opacity: 0, scale: 0.95 }}
-               animate={{ opacity: 1, scale: 1 }}
-               className="text-center py-20 bg-white/5 rounded-3xl border border-white/10 border-dashed"
-             >
-                <HardHat className="w-12 h-12 mx-auto mb-3 text-zinc-600" />
-                <p className="text-zinc-500">No pending tasks assigned to you.</p>
-             </motion.div>
-        ) : (
-            tasks.map((job, index) => {
-                const progress = Math.min(100, Math.round(((job.completedSQM || 0) / job.targetSQM) * 100));
-                return (
-                <motion.div 
-                    key={job.id}
-                    layoutId={job.id}
-                    variants={fadeInUp}
-                    transition={{ delay: index * 0.05 }}
-                    whileHover={{ scale: 1.01, y: -2 }}
-                    className="bg-white/5 border border-white/10 rounded-3xl p-6 backdrop-blur-xl hover:bg-white/[0.07] transition-all"
-                >
-                    <div className="flex flex-col md:flex-row justify-between gap-6">
-                        <div className="flex-1">
-                            <div className="flex items-center gap-3 mb-2">
+        <motion.button
+          onClick={() => setActiveTab('tasks')}
+          whileHover={{ scale: 1.02 }}
+          whileTap={{ scale: 0.98 }}
+          className={`flex items-center gap-2 px-6 py-3 rounded-xl font-medium transition-all ${
+            activeTab === 'tasks'
+              ? 'bg-gradient-to-r from-purple-600 to-purple-700 text-white shadow-lg shadow-purple-500/20'
+              : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+          }`}
+        >
+          <ClipboardList className="w-4 h-4" />
+          My Tasks
+          {tasks.length > 0 && (
+            <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
+              activeTab === 'tasks' ? 'bg-white/20' : 'bg-zinc-700'
+            }`}>
+              {tasks.length}
+            </span>
+          )}
+        </motion.button>
+        
+        <motion.button
+          onClick={() => setActiveTab('materials')}
+          whileHover={{ scale: 1.02 }}
+          whileTap={{ scale: 0.98 }}
+          className={`flex items-center gap-2 px-6 py-3 rounded-xl font-medium transition-all ${
+            activeTab === 'materials'
+              ? 'bg-gradient-to-r from-orange-600 to-orange-700 text-white shadow-lg shadow-orange-500/20'
+              : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+          }`}
+        >
+          <Package className="w-4 h-4" />
+          Material Requests
+        </motion.button>
+      </motion.div>
+
+      {/* TAB CONTENT */}
+      {activeTab === 'materials' ? (
+        <SupervisorMaterialRequest />
+      ) : (
+        <>
+          {/* TASK LIST */}
+          <motion.div 
+            variants={staggerContainer}
+            initial="hidden"
+            animate="visible"
+            className="grid grid-cols-1 gap-4"
+          >
+            {tasks.length === 0 ? (
+                 <motion.div 
+                   initial={{ opacity: 0, scale: 0.95 }}
+                   animate={{ opacity: 1, scale: 1 }}
+                   className="text-center py-20 bg-white/5 rounded-3xl border border-white/10 border-dashed"
+                 >
+                    <HardHat className="w-12 h-12 mx-auto mb-3 text-zinc-600" />
+                    <p className="text-zinc-500">No pending tasks assigned to you.</p>
+                 </motion.div>
+            ) : (
+                tasks.map((job, index) => {
+                    const progress = Math.min(100, Math.round(((job.completedSQM || 0) / job.targetSQM) * 100));
+                    return (
+                    <motion.div 
+                        key={job.id}
+                        layoutId={job.id}
+                        variants={fadeInUp}
+                        transition={{ delay: index * 0.05 }}
+                        whileHover={{ scale: 1.01, y: -2 }}
+                        className="bg-white/5 border border-white/10 rounded-3xl p-6 backdrop-blur-xl hover:bg-white/[0.07] transition-all"
+                    >
+                        <div className="flex flex-col md:flex-row justify-between gap-6">
+                            <div className="flex-1">
+                                <div className="flex items-center gap-3 mb-2">
                                 <motion.span 
                                   whileHover={{ scale: 1.05 }}
                                   className="px-3 py-1 bg-blue-500/20 text-blue-300 rounded-lg text-xs font-bold border border-blue-500/30"
@@ -216,7 +268,9 @@ export default function SupervisorPage() {
                 );
             })
         )}
-      </motion.div>
+          </motion.div>
+        </>
+      )}
 
       {/* ENTRY MODAL */}
       <AnimatePresence>
