@@ -5,10 +5,10 @@ import { useRouter } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
 
 // ==========================================
-// PURCHASE LAYOUT - No Sidebar (Standalone Page)
+// STORE LAYOUT - No Sidebar (Standalone Page)
 // ==========================================
 
-export default function PurchaseLayout({ children }: { children: React.ReactNode }) {
+export default function StoreLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
 
