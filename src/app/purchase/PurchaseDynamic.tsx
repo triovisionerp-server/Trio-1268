@@ -9,6 +9,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
+
+// Enhanced PO Form Component
+import EnhancedPOForm from './EnhancedPOForm';
 import {
   FileText,
   ShoppingCart,
@@ -2687,7 +2690,7 @@ export default function PurchaseDynamic() {
         )}
       </AnimatePresence>
       
-      {/* Direct PO Modal */}
+      {/* Direct PO Modal - Enhanced Odoo-style Form */}
       <AnimatePresence>
         {showDirectPOModal && (
           <motion.div
@@ -2702,20 +2705,29 @@ export default function PurchaseDynamic() {
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
               onClick={(e) => e.stopPropagation()}
-              className="w-full max-w-3xl bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden max-h-[90vh] overflow-y-auto"
+              className="w-full max-w-5xl bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden"
             >
-              <div className="p-6 border-b border-zinc-800 bg-gradient-to-r from-cyan-500/10 to-blue-500/10 sticky top-0">
-                <h3 className="text-xl font-bold text-white">Create Direct Purchase Order</h3>
-                <p className="text-sm text-zinc-400 mt-1">
-                  Create a PO directly without a PR. For urgent purchases.
-                </p>
-              </div>
-              <DirectPOForm
+              <EnhancedPOForm
                 materials={materials}
                 suppliers={suppliers}
-                onSubmit={handleCreateDirectPO}
+                onSubmit={async (formData) => {
+                  await handleCreateDirectPO({
+                    supplierId: formData.vendorId,
+                    supplierName: formData.vendorName,
+                    items: formData.items.filter(i => i.materialId).map(i => ({
+                      materialId: i.materialId,
+                      quantity: i.quantity,
+                      unitPrice: i.unitPrice,
+                    })),
+                    paymentTerms: formData.paymentTerms,
+                    deliveryTerms: formData.logisticDetails,
+                    expectedDelivery: formData.expectedArrival,
+                    notes: formData.notes,
+                  });
+                }}
                 onCancel={() => setShowDirectPOModal(false)}
                 isSubmitting={isSubmitting}
+                mdApprovalThreshold={MD_APPROVAL_THRESHOLD}
               />
             </motion.div>
           </motion.div>
