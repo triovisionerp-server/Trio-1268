@@ -233,6 +233,7 @@ export default function PurchaseDynamic() {
     // Materials
     unsubscribers.push(
       subscribeToMaterials((data) => {
+        console.log('[Purchase] Materials loaded:', data.length);
         setMaterials(data as unknown as Material[]);
       })
     );
@@ -240,6 +241,7 @@ export default function PurchaseDynamic() {
     // Suppliers
     unsubscribers.push(
       subscribeToSuppliers((data) => {
+        console.log('[Purchase] Suppliers loaded:', data.length, data);
         setSuppliers(data as unknown as Supplier[]);
       })
     );
@@ -3023,16 +3025,23 @@ function CreatePOForm({
       {/* Supplier Selection */}
       <div>
         <label className="block text-sm font-medium text-zinc-300 mb-2">Select Supplier *</label>
-        <select
-          value={supplierId}
-          onChange={(e) => setSupplierId(e.target.value)}
-          className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white outline-none"
-        >
-          <option value="">Choose a supplier</option>
-          {suppliers.map(s => (
-            <option key={s.id} value={s.id}>{s.name}</option>
-          ))}
-        </select>
+        {suppliers.length === 0 ? (
+          <div className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-yellow-400 flex items-center gap-2">
+            <RefreshCw className="w-4 h-4 animate-spin" />
+            Loading suppliers...
+          </div>
+        ) : (
+          <select
+            value={supplierId}
+            onChange={(e) => setSupplierId(e.target.value)}
+            className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white outline-none focus:border-blue-500"
+          >
+            <option value="">Choose a supplier ({suppliers.length} available)</option>
+            {suppliers.map(s => (
+              <option key={s.id} value={s.id}>{s.name}</option>
+            ))}
+          </select>
+        )}
         {selectedSupplier && (
           <div className="mt-2 text-sm text-zinc-500">
             Contact: {selectedSupplier.contact} • {selectedSupplier.email || 'No email'}
@@ -3421,16 +3430,23 @@ function DirectPOForm({
       {/* Supplier Selection */}
       <div>
         <label className="block text-sm font-medium text-zinc-300 mb-2">Supplier *</label>
-        <select
-          value={supplierId}
-          onChange={(e) => setSupplierId(e.target.value)}
-          className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white outline-none"
-        >
-          <option value="">Select Supplier</option>
-          {suppliers.map(s => (
-            <option key={s.id} value={s.id}>{s.name}</option>
-          ))}
-        </select>
+        {suppliers.length === 0 ? (
+          <div className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-yellow-400 flex items-center gap-2">
+            <RefreshCw className="w-4 h-4 animate-spin" />
+            Loading suppliers...
+          </div>
+        ) : (
+          <select
+            value={supplierId}
+            onChange={(e) => setSupplierId(e.target.value)}
+            className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white outline-none focus:border-blue-500"
+          >
+            <option value="">Select Supplier ({suppliers.length} available)</option>
+            {suppliers.map(s => (
+              <option key={s.id} value={s.id}>{s.name}</option>
+            ))}
+          </select>
+        )}
         {selectedSupplier && (
           <p className="text-xs text-zinc-500 mt-1">
             Contact: {selectedSupplier.contact} | Email: {selectedSupplier.email || 'N/A'}
