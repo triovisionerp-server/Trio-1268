@@ -8,7 +8,8 @@ import PurchaseDynamic from './PurchaseDynamic';
 // ==========================================
 // MAIN PAGE WRAPPER - Routes based on role
 // ==========================================
-// Integrated with: Store ↔ Supervisor ↔ Purchase ↔ MD
+// Purchase Management - Clean workflow without Store links
+// Last updated: 2026-01-30
 
 // Helper to get user role synchronously
 function getUserRoleFromStorage(): string {
