@@ -19,6 +19,7 @@ const FALLBACK_USERS: Record<string, { password: string; role: string; name: str
   naresh: { password: 'hr123', role: 'hr', name: 'Naresh (HR)' },
   dhathri: { password: 'hr123', role: 'hr', name: 'Dhathri (HR)' },
   prasuna: { password: 'hr123', role: 'hr', name: 'Prasuna (HR)' },
+  store : { password: 'store123', role: 'store', name: 'Store Manager' },
   purchase: { password: 'purchase123', role: 'purchase', name: 'Purchase Team' },
   design: { password: 'design123', role: 'design', name: 'Design Team' },
   quality: { password: 'quality123', role: 'quality', name: 'Quality Team' },

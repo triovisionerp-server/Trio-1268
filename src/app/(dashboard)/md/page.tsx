@@ -171,7 +171,6 @@ export default function MDDashboard() {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [activeModal, setActiveModal] = useState<ModalType>(null);
   const [showNotifications, setShowNotifications] = useState(false);
-  const [activeView, setActiveView] = useState<'dashboard' | 'purchase'>('dashboard');
   const [pendingOrders, setPendingOrders] = useState<PurchaseOrder[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<PurchaseOrder | null>(null);
   const [showOrderDetails, setShowOrderDetails] = useState(false);
@@ -375,31 +374,7 @@ export default function MDDashboard() {
             </motion.p>
           </div>
 
-          {/* View Tabs */}
-          <div className="flex items-center gap-2 bg-white/5 rounded-2xl p-1.5 border border-white/10">
-            <button
-              onClick={() => setActiveView('dashboard')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all ${
-                activeView === 'dashboard'
-                  ? 'bg-gradient-to-r from-cyan-500/20 to-blue-500/20 text-cyan-400 border border-cyan-500/30'
-                  : 'text-zinc-400 hover:text-white hover:bg-white/5'
-              }`}
-            >
-              <LayoutDashboard className="w-4 h-4" />
-              Overview
-            </button>
-            <button
-              onClick={() => setActiveView('purchase')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all ${
-                activeView === 'purchase'
-                  ? 'bg-gradient-to-r from-indigo-500/20 to-purple-500/20 text-indigo-400 border border-indigo-500/30'
-                  : 'text-zinc-400 hover:text-white hover:bg-white/5'
-              }`}
-            >
-              <ShoppingCart className="w-4 h-4" />
-              Purchase
-            </button>
-          </div>
+
           
           <motion.div 
             className="flex items-center gap-4 relative"
@@ -678,11 +653,7 @@ export default function MDDashboard() {
           </motion.div>
         </motion.header>
 
-        {/* ════════════════════ CONDITIONAL CONTENT ════════════════════ */}
-        {activeView === 'purchase' ? (
-          <MDPurchaseOverview />
-        ) : (
-          <>
+        {/* ════════════════════ MAIN CONTENT ════════════════════ */}
         {/* ════════════════════ KPI CARDS ════════════════════ */}
         <motion.div variants={staggerContainer} className="grid grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-5 mb-8">
           <KPICard
@@ -1155,8 +1126,6 @@ export default function MDDashboard() {
           <span>© 2026 TrioVision International • Composites ERP System</span>
           <span>Last updated: {timeString}</span>
         </motion.footer>
-          </>
-        )}
       </motion.div>
 
       {/* ════════════════════ MODALS (Production Sheds Only) ════════════════════ */}

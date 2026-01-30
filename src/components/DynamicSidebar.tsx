@@ -76,7 +76,7 @@ const ALL_MENU_ITEMS: MenuItem[] = [
     name: 'Manufacturing', 
     path: '/production', 
     icon: Factory, 
-    roles: ['md', 'admin', 'pm', 'supervisor'] 
+    roles: ['admin', 'pm', 'supervisor'] 
   },
   { 
     name: 'My Tasks', 

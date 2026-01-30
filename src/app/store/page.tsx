@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Package, 
@@ -20,7 +21,9 @@ import {
   Warehouse,
   Image as ImageIcon,
   Grid3X3,
-  List
+  List,
+  ArrowLeft,
+  Home
 } from 'lucide-react';
 import { db } from '@/lib/firebase/client';
 import { 
@@ -64,6 +67,8 @@ interface MaterialItem {
 // ==========================================
 
 export default function StorePage() {
+  const router = useRouter();
+  
   // State for data
   const [materials, setMaterials] = useState<MaterialItem[]>([]);
   const [incomingOrders, setIncomingOrders] = useState<PurchaseOrder[]>([]);
@@ -347,6 +352,24 @@ export default function StorePage() {
 
   return (
     <div className="min-h-screen bg-[#020202] text-white p-6">
+      {/* Back Navigation */}
+      <div className="flex items-center gap-4 mb-6">
+        <button
+          onClick={() => router.back()}
+          className="flex items-center gap-2 px-3 py-2 bg-zinc-800/50 hover:bg-zinc-700/50 border border-zinc-700 rounded-lg text-sm text-zinc-300 hover:text-white transition-all"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          Back
+        </button>
+        <button
+          onClick={() => router.push('/md')}
+          className="flex items-center gap-2 px-3 py-2 bg-zinc-800/50 hover:bg-zinc-700/50 border border-zinc-700 rounded-lg text-sm text-zinc-300 hover:text-white transition-all"
+        >
+          <Home className="w-4 h-4" />
+          Dashboard
+        </button>
+      </div>
+
       {/* Header */}
       <div className="flex items-center justify-between mb-8">
         <div>
