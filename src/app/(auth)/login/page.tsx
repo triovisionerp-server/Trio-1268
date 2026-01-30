@@ -47,13 +47,38 @@ const ROLE_DASHBOARD_MAP: Record<string, string> = {
   supervisor: '/supervisor',
   employee: '/employee',
   
-  // Departments
+  // Store & Inventory
+  store: '/store',
+  store_manager: '/store',
+  inventory: '/store',
+  warehouse: '/store',
+  
+  // Purchase & Procurement
   purchase: '/purchase',
+  purchase_manager: '/purchase',
+  procurement: '/purchase',
+  
+  // Design & Engineering
   design: '/design',
+  engineering: '/design',
+  
+  // Quality & Inspection
   quality: '/quality',
+  qc: '/quality',
+  inspection: '/quality',
+  
+  // Dispatch & Logistics
   dispatch: '/dispatch',
+  logistics: '/dispatch',
+  
+  // Tooling & Manufacturing
   tooling: '/tooling',
+  manufacturing: '/tooling',
+  production: '/production',
+  
+  // Customer Portal
   customer: '/customer',
+  client: '/customer',
   
   // Other
   viewer: '/store',
