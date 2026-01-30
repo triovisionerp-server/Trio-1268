@@ -486,10 +486,28 @@ export default function PurchaseDynamic() {
         mdApprovalThreshold: MD_APPROVAL_THRESHOLD,
       });
       
-      alert(totalAmount >= MD_APPROVAL_THRESHOLD 
-        ? `PO created! Sent to MD for approval (Amount: ${formatCurrency(totalAmount)})`
-        : 'PO created and approved successfully!'
-      );
+      if (totalAmount >= MD_APPROVAL_THRESHOLD) {
+        // Show confirmation with option to notify MD
+        const notifyMD = window.confirm(
+          `✅ PO created successfully!\n\n` +
+          `Amount: ${formatCurrency(totalAmount)}\n` +
+          `Status: Pending MD Approval\n\n` +
+          `Would you like to notify MD via WhatsApp?`
+        );
+        
+        if (notifyMD) {
+          const message = `🔔 *PO Approval Required*\n\n` +
+            `PO Amount: ${formatCurrency(totalAmount)}\n` +
+            `Vendor: ${supplierData.supplierName}\n` +
+            `Items: ${pr.items.length} items\n` +
+            `Created By: ${currentUser.name}\n\n` +
+            `Please review and approve at:\n` +
+            `https://trio-1268.vercel.app/md`;
+          window.open(`https://wa.me/917981085020?text=${encodeURIComponent(message)}`, '_blank');
+        }
+      } else {
+        alert('PO created and approved successfully!');
+      }
       setShowCreatePOModal(false);
     } catch (error) {
       console.error('Error creating PO:', error);
@@ -1515,6 +1533,26 @@ export default function PurchaseDynamic() {
                             title="Mark as Ordered"
                           >
                             <Send className="w-4 h-4 text-blue-400" />
+                          </motion.button>
+                        )}
+                        
+                        {po.status === 'pending_md_approval' && (
+                          <motion.button
+                            whileHover={{ scale: 1.1 }}
+                            whileTap={{ scale: 0.9 }}
+                            onClick={() => {
+                              const message = `🔔 *PO Approval Reminder*\n\n` +
+                                `PO: ${po.poNumber}\n` +
+                                `Amount: ${formatCurrency(po.totalAmount)}\n` +
+                                `Vendor: ${po.vendorName}\n` +
+                                `Items: ${po.items.length} items\n\n` +
+                                `Please review at:\nhttps://trio-1268.vercel.app/md`;
+                              window.open(`https://wa.me/917981085020?text=${encodeURIComponent(message)}`, '_blank');
+                            }}
+                            className="w-8 h-8 bg-yellow-500/20 hover:bg-yellow-500/30 rounded-lg flex items-center justify-center animate-pulse"
+                            title="Notify MD for Approval"
+                          >
+                            <Bell className="w-4 h-4 text-yellow-400" />
                           </motion.button>
                         )}
                         
