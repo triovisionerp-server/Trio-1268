@@ -8,15 +8,12 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   FileText,
   ShoppingCart,
   Receipt,
   CheckCircle2,
-  Home,
-  Warehouse,
   LogOut,
   Clock,
   AlertTriangle,
@@ -131,6 +128,9 @@ export default function PurchaseDynamic() {
   // ==========================================
   // STATE
   // ==========================================
+  
+  // Router for navigation
+  const router = useRouter();
   
   // Data states
   const [materialRequests, setMaterialRequests] = useState<MaterialRequest[]>([]);
@@ -2281,6 +2281,11 @@ export default function PurchaseDynamic() {
   // MAIN RENDER
   // ==========================================
   
+  const handleLogout = () => {
+    localStorage.removeItem('currentUser');
+    router.push('/login');
+  };
+  
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -2292,92 +2297,119 @@ export default function PurchaseDynamic() {
     );
   }
   
-  const router = useRouter();
-  
-  const handleLogout = () => {
-    localStorage.removeItem('currentUser');
-    router.push('/login');
-  };
-  
   return (
     <div className="min-h-screen p-6 space-y-6">
-      {/* Top Navigation Bar */}
+      {/* Header with User Info */}
       <motion.div
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="flex items-center justify-between bg-zinc-900/50 border border-zinc-800 rounded-2xl p-4"
+        className="flex items-center justify-between"
       >
         <div className="flex items-center gap-4">
-          <Link href="/store">
-            <motion.button
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              className="flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-xl text-zinc-400 hover:text-white transition-colors"
-            >
-              <Warehouse className="w-4 h-4" />
-              <span className="text-sm font-medium">Store</span>
-            </motion.button>
-          </Link>
-          <Link href="/empStore">
-            <motion.button
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              className="flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-xl text-zinc-400 hover:text-white transition-colors"
-            >
-              <FileText className="w-4 h-4" />
-              <span className="text-sm font-medium">Data Entry</span>
-            </motion.button>
-          </Link>
-          <Link href="/md">
-            <motion.button
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              className="flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-xl text-zinc-400 hover:text-white transition-colors"
-            >
-              <Home className="w-4 h-4" />
-              <span className="text-sm font-medium">MD Dashboard</span>
-            </motion.button>
-          </Link>
-        </div>
-        
-        <div className="flex items-center gap-3">
-          <span className="text-sm text-zinc-500">
-            {currentUser.name} • <span className="capitalize">{currentUser.role}</span>
-          </span>
-          <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            onClick={handleLogout}
-            className="flex items-center gap-2 px-4 py-2 bg-red-500/10 hover:bg-red-500/20 rounded-xl text-red-400 transition-colors"
-          >
-            <LogOut className="w-4 h-4" />
-            <span className="text-sm font-medium">Logout</span>
-          </motion.button>
-        </div>
-      </motion.div>
-      
-      {/* Header */}
-      <motion.div
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="flex flex-col md:flex-row md:items-center md:justify-between gap-4"
-      >
-        <div className="flex items-center gap-4">
-          <div className="w-14 h-14 bg-gradient-to-br from-blue-600 to-purple-600 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-500/20">
+          <div className="w-14 h-14 bg-gradient-to-br from-blue-600 to-cyan-500 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-500/20">
             <ShoppingCart className="w-7 h-7 text-white" />
           </div>
           <div>
             <h1 className="text-2xl md:text-3xl font-bold text-white tracking-tight">
               Purchase Management
             </h1>
-            <p className="text-zinc-500">
-              Integrated procurement workflow • Store ↔ Supervisor ↔ Purchase ↔ MD
+            <p className="text-zinc-500 text-sm">
+              Complete procurement workflow • PR → PO → GRN → Invoice
             </p>
           </div>
         </div>
         
-        {/* Quick Actions + Notifications */}
         <div className="flex items-center gap-3">
+          {/* User Info */}
+          <div className="hidden md:flex items-center gap-2 px-4 py-2 bg-zinc-900/50 border border-zinc-800 rounded-xl">
+            <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-pink-500 rounded-lg flex items-center justify-center text-white font-bold text-sm">
+              {currentUser.name?.charAt(0)?.toUpperCase() || 'U'}
+            </div>
+            <div>
+              <p className="text-sm text-white font-medium">{currentUser.name}</p>
+              <p className="text-xs text-zinc-500 capitalize">{currentUser.role}</p>
+            </div>
+          </div>
+          
+          {/* Logout */}
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={handleLogout}
+            className="p-2.5 bg-zinc-800 hover:bg-red-500/20 rounded-xl text-zinc-400 hover:text-red-400 transition-colors"
+            title="Logout"
+          >
+            <LogOut className="w-5 h-5" />
+          </motion.button>
+        </div>
+      </motion.div>
+      
+      {/* Quick Stats Bar */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.1 }}
+        className="grid grid-cols-2 md:grid-cols-5 gap-3"
+      >
+        <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-4 flex items-center gap-3">
+          <div className="w-10 h-10 bg-orange-500/20 rounded-lg flex items-center justify-center">
+            <ClipboardList className="w-5 h-5 text-orange-400" />
+          </div>
+          <div>
+            <p className="text-xl font-bold text-white">{materialRequests.filter(r => r.status === 'pending').length}</p>
+            <p className="text-xs text-zinc-500">Pending Requests</p>
+          </div>
+        </div>
+        
+        <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-4 flex items-center gap-3">
+          <div className="w-10 h-10 bg-blue-500/20 rounded-lg flex items-center justify-center">
+            <FileText className="w-5 h-5 text-blue-400" />
+          </div>
+          <div>
+            <p className="text-xl font-bold text-white">{purchaseRequisitions.filter(p => p.status === 'submitted').length}</p>
+            <p className="text-xs text-zinc-500">Active PRs</p>
+          </div>
+        </div>
+        
+        <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-4 flex items-center gap-3">
+          <div className="w-10 h-10 bg-green-500/20 rounded-lg flex items-center justify-center">
+            <ShoppingCart className="w-5 h-5 text-green-400" />
+          </div>
+          <div>
+            <p className="text-xl font-bold text-white">{purchaseOrders.length}</p>
+            <p className="text-xs text-zinc-500">Total POs</p>
+          </div>
+        </div>
+        
+        <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-4 flex items-center gap-3">
+          <div className="w-10 h-10 bg-yellow-500/20 rounded-lg flex items-center justify-center">
+            <Clock className="w-5 h-5 text-yellow-400" />
+          </div>
+          <div>
+            <p className="text-xl font-bold text-white">{purchaseOrders.filter(p => p.status === 'pending_md_approval').length}</p>
+            <p className="text-xs text-zinc-500">Awaiting Approval</p>
+          </div>
+        </div>
+        
+        <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-4 flex items-center gap-3">
+          <div className="w-10 h-10 bg-purple-500/20 rounded-lg flex items-center justify-center">
+            <IndianRupee className="w-5 h-5 text-purple-400" />
+          </div>
+          <div>
+            <p className="text-xl font-bold text-white">{formatCurrency(purchaseOrders.reduce((sum, po) => sum + po.totalAmount, 0))}</p>
+            <p className="text-xs text-zinc-500">Total PO Value</p>
+          </div>
+        </div>
+      </motion.div>
+      
+      {/* Action Buttons */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.15 }}
+        className="flex flex-wrap items-center justify-between gap-4 bg-zinc-900/30 border border-zinc-800 rounded-xl p-4"
+      >
+        <div className="flex flex-wrap items-center gap-2">
           <motion.button
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
@@ -2385,13 +2417,24 @@ export default function PurchaseDynamic() {
             className="px-4 py-2.5 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white rounded-xl flex items-center gap-2 font-medium shadow-lg shadow-cyan-500/20"
           >
             <Plus className="w-4 h-4" />
-            Create PO
+            New PO
           </motion.button>
           
-          {/* Notifications Bell */}
-          <div className="relative">
-            <motion.button
-              whileHover={{ scale: 1.05 }}
+          <motion.button
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={() => setShowCreatePRModal(true)}
+            className="px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-white rounded-xl flex items-center gap-2 font-medium border border-zinc-700"
+          >
+            <FileText className="w-4 h-4" />
+            New PR
+          </motion.button>
+        </div>
+        
+        {/* Notifications */}
+        <div className="relative">
+          <motion.button
+            whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             onClick={() => setShowNotifications(!showNotifications)}
             className="w-12 h-12 bg-zinc-800 hover:bg-zinc-700 rounded-xl flex items-center justify-center relative"
@@ -2444,7 +2487,6 @@ export default function PurchaseDynamic() {
               </motion.div>
             )}
           </AnimatePresence>
-        </div>
         </div>
       </motion.div>
       
