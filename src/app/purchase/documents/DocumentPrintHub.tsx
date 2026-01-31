@@ -81,13 +81,12 @@ export const DocumentPrintHub: React.FC<DocumentPrintHubProps> = ({
 
   const config = DOCUMENT_CONFIGS[documentType];
 
-  // Print handler
+  // Print handler using react-to-print v3 API
   const handlePrint = useReactToPrint({
     contentRef: componentRef,
-    documentTitle: `${documentType}_${(data as { poNumber?: string; dcNumber?: string; invoiceNumber?: string; grnNumber?: string }).poNumber || (data as { dcNumber?: string }).dcNumber || (data as { invoiceNumber?: string }).invoiceNumber || (data as { grnNumber?: string }).grnNumber}`,
-    onBeforePrint: () => {
+    documentTitle: `${documentType}_${getDocumentNumber(data)}`,
+    onBeforePrint: async () => {
       setIsPrinting(true);
-      return Promise.resolve();
     },
     onAfterPrint: () => {
       setIsPrinting(false);
@@ -98,13 +97,37 @@ export const DocumentPrintHub: React.FC<DocumentPrintHubProps> = ({
         margin: 10mm;
       }
       @media print {
-        body {
+        html, body {
+          height: 100%;
+          margin: 0 !important;
+          padding: 0 !important;
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
+        }
+        .doc-container {
+          width: 100% !important;
+          max-width: none !important;
+          margin: 0 !important;
+          padding: 20px !important;
+          box-shadow: none !important;
+        }
+        img {
+          max-width: 100% !important;
           -webkit-print-color-adjust: exact !important;
           print-color-adjust: exact !important;
         }
       }
     `
   });
+
+  // Helper to get document number
+  function getDocumentNumber(docData: PurchaseOrderData | DeliveryChallanData | TaxInvoiceData | GoodsReceiptData): string {
+    if ('poNumber' in docData && docData.poNumber) return docData.poNumber;
+    if ('dcNumber' in docData && docData.dcNumber) return docData.dcNumber;
+    if ('invoiceNumber' in docData && docData.invoiceNumber) return docData.invoiceNumber;
+    if ('grnNumber' in docData && (docData as GoodsReceiptData).grnNumber) return (docData as GoodsReceiptData).grnNumber;
+    return 'DOC';
+  }
 
   // Render appropriate template
   const renderTemplate = () => {
@@ -236,11 +259,18 @@ export const DocumentPrintHub: React.FC<DocumentPrintHubProps> = ({
             </div>
           </div>
 
-          {/* Preview Area */}
+          {/* Preview Area - ALWAYS render for print, but hide visually if preview is off */}
           <div className="flex-1 overflow-auto bg-zinc-950 p-6">
-            {showPreview && (
-              <div className="max-w-4xl mx-auto">
-                {renderTemplate()}
+            <div className={`max-w-4xl mx-auto ${showPreview ? '' : 'opacity-0 h-0 overflow-hidden'}`}>
+              {renderTemplate()}
+            </div>
+            {!showPreview && (
+              <div className="flex items-center justify-center h-64 text-zinc-500">
+                <div className="text-center">
+                  <Eye className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                  <p>Preview hidden. Click &quot;Show Preview&quot; to view document.</p>
+                  <p className="text-xs mt-1">Print will still work.</p>
+                </div>
               </div>
             )}
           </div>
@@ -248,7 +278,7 @@ export const DocumentPrintHub: React.FC<DocumentPrintHubProps> = ({
           {/* Footer */}
           <div className="bg-zinc-800 p-3 flex items-center justify-between border-t border-zinc-700 text-xs text-zinc-500">
             <p>
-              Document: {documentType}-{(data as { poNumber?: string; dcNumber?: string; invoiceNumber?: string; grnNumber?: string }).poNumber || (data as { dcNumber?: string }).dcNumber || (data as { invoiceNumber?: string }).invoiceNumber || (data as { grnNumber?: string }).grnNumber}
+              Document: {documentType}-{getDocumentNumber(data)}
             </p>
             <p>Generated on {new Date().toLocaleString('en-IN')}</p>
           </div>
