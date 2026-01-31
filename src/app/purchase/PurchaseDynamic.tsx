@@ -2284,6 +2284,96 @@ export default function PurchaseDynamic() {
                     </div>
                   );
                 })()}
+                
+                {/* Goods Receipt (GRN) Details */}
+                {selectedItemType === 'receipt' && (() => {
+                  const grn = selectedItem as GoodsReceipt;
+                  return (
+                    <div className="space-y-6">
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div>
+                          <p className="text-zinc-500 text-xs">Vendor</p>
+                          <p className="text-white font-medium">{grn.vendorName}</p>
+                        </div>
+                        <div>
+                          <p className="text-zinc-500 text-xs">PO Reference</p>
+                          <p className="text-blue-400 font-mono font-medium">{grn.poNumber}</p>
+                        </div>
+                        <div>
+                          <p className="text-zinc-500 text-xs">Status</p>
+                          <span className={`px-2 py-1 rounded text-xs font-medium ${
+                            grn.status === 'completed' ? 'bg-green-500/20 text-green-400' :
+                            grn.status === 'verified' ? 'bg-blue-500/20 text-blue-400' :
+                            grn.status === 'quality_check' ? 'bg-yellow-500/20 text-yellow-400' :
+                            'bg-zinc-500/20 text-zinc-400'
+                          }`}>
+                            {grn.status.replace(/_/g, ' ').toUpperCase()}
+                          </span>
+                        </div>
+                        <div>
+                          <p className="text-zinc-500 text-xs">Received Date</p>
+                          <p className="text-white">{new Date(grn.receivedAt).toLocaleDateString()}</p>
+                        </div>
+                      </div>
+                      
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <p className="text-zinc-500 text-xs">Received By</p>
+                          <p className="text-white">{grn.receivedByName}</p>
+                        </div>
+                        <div>
+                          <p className="text-zinc-500 text-xs">Total Value</p>
+                          <p className="text-white font-bold text-lg">{formatCurrency(grn.totalReceivedValue)}</p>
+                        </div>
+                      </div>
+                      
+                      <div>
+                        <p className="text-zinc-500 text-xs mb-3">Received Items ({grn.items.length})</p>
+                        <div className="bg-zinc-800/50 rounded-xl overflow-hidden">
+                          <table className="w-full">
+                            <thead>
+                              <tr className="text-left text-xs text-zinc-500 border-b border-zinc-700">
+                                <th className="p-3">Material</th>
+                                <th className="p-3">Ordered</th>
+                                <th className="p-3">Received</th>
+                                <th className="p-3">Status</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-zinc-700">
+                              {grn.items.map((item, idx) => (
+                                <tr key={idx}>
+                                  <td className="p-3 text-white">{item.materialName}</td>
+                                  <td className="p-3 text-zinc-400">{item.orderedQty} {item.unit}</td>
+                                  <td className="p-3">
+                                    <span className={item.receivedQty >= item.orderedQty ? 'text-green-400' : 'text-yellow-400'}>
+                                      {item.receivedQty} {item.unit}
+                                    </span>
+                                  </td>
+                                  <td className="p-3">
+                                    <span className={`px-2 py-0.5 rounded text-xs ${
+                                      item.qualityStatus === 'passed' ? 'bg-green-500/20 text-green-400' :
+                                      item.qualityStatus === 'failed' ? 'bg-red-500/20 text-red-400' :
+                                      'bg-yellow-500/20 text-yellow-400'
+                                    }`}>
+                                      {(item.qualityStatus || 'pending').toUpperCase()}
+                                    </span>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                      
+                      {grn.remarks && (
+                        <div className="p-4 bg-zinc-800/50 rounded-xl">
+                          <p className="text-zinc-500 text-xs mb-1">Remarks</p>
+                          <p className="text-zinc-300">{grn.remarks}</p>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
               
               {/* Modal Footer */}
