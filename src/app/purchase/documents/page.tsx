@@ -127,18 +127,6 @@ const SAMPLE_DC_DATA: DeliveryChallanData = {
   dcDate: '2026-01-31',
   poNumber: 'PO-2026-001',
   poDate: '2026-01-25',
-  eWayBillNo: 'EWB123456789012',
-  eWayBillDate: '2026-01-31',
-  transportMode: 'Road',
-  vehicleNumber: 'AP39TG4567',
-  vehicleType: 'LCV',
-  driverName: 'Ramesh',
-  driverPhone: '+91 9876543210',
-  transporterName: 'Sri Sai Transport',
-  transporterGstin: '37AABCS1234N1Z5',
-  lrNumber: 'LR-2026-456',
-  lrDate: '2026-01-31',
-  reasonForTransport: 'Supply against PO',
   
   consignor: {
     name: COMPANY_INFO.name,
@@ -153,8 +141,18 @@ const SAMPLE_DC_DATA: DeliveryChallanData = {
     address: 'Plot 23, SIPCOT Industrial Park, Chennai - 600058',
     gstin: '33AABCA1234N1Z5',
     stateCode: '33',
-    phone: '+91 9876543210',
-    contactPerson: 'Mr. Venkat'
+    phone: '+91 9876543210'
+  },
+  
+  transport: {
+    mode: 'Road',
+    vehicleNumber: 'AP39TG4567',
+    driverName: 'Ramesh',
+    driverPhone: '+91 9876543210',
+    lrNumber: 'LR-2026-456',
+    lrDate: '2026-01-31',
+    eWayBillNo: 'EWB123456789012',
+    eWayBillDate: '2026-01-31'
   },
   
   items: [
@@ -165,8 +163,7 @@ const SAMPLE_DC_DATA: DeliveryChallanData = {
       hsnCode: '39269099',
       quantity: 25,
       unit: 'Pcs',
-      grossWeight: 125,
-      netWeight: 120
+      remarks: 'Gross: 125 Kg, Net: 120 Kg'
     },
     {
       slNo: 2,
@@ -175,17 +172,15 @@ const SAMPLE_DC_DATA: DeliveryChallanData = {
       hsnCode: '39269099',
       quantity: 10,
       unit: 'Pcs',
-      grossWeight: 50,
-      netWeight: 48
+      remarks: 'Gross: 50 Kg, Net: 48 Kg'
     }
   ],
   
-  totalPackages: 35,
-  totalGrossWeight: 175,
-  totalNetWeight: 168,
+  reason: 'Supply',
+  reasonRemarks: 'Supply against PO',
   
-  remarks: 'Handle with care. Do not stack.',
-  dispatchedBy: 'Store Incharge'
+  preparedBy: 'Store Incharge',
+  remarks: 'Handle with care. Do not stack.'
 };
 
 const SAMPLE_INVOICE_DATA: TaxInvoiceData = {
@@ -214,13 +209,11 @@ const SAMPLE_INVOICE_DATA: TaxInvoiceData = {
     address: 'Plot 23, SIPCOT Industrial Park, Chennai - 600058',
     gstin: '33AABCA1234N1Z5',
     stateCode: '33',
-    pan: 'AABCA1234N',
     phone: '+91 9876543210',
-    email: 'purchase@abcmfg.com',
-    contactPerson: 'Mr. Venkat'
+    email: 'purchase@abcmfg.com'
   },
   
-  shipTo: {
+  shippingAddress: {
     name: 'ABC Manufacturing Ltd',
     address: 'Plot 23, SIPCOT Industrial Park, Chennai - 600058',
     phone: '+91 9876543210'
@@ -237,7 +230,6 @@ const SAMPLE_INVOICE_DATA: TaxInvoiceData = {
       unitPrice: 8500.00,
       discount: 0,
       taxableValue: 212500.00,
-      gstRate: 18,
       cgstRate: 0,
       cgstAmount: 0,
       sgstRate: 0,
@@ -256,7 +248,6 @@ const SAMPLE_INVOICE_DATA: TaxInvoiceData = {
       unitPrice: 12000.00,
       discount: 5,
       taxableValue: 114000.00,
-      gstRate: 18,
       cgstRate: 0,
       cgstAmount: 0,
       sgstRate: 0,
@@ -270,62 +261,49 @@ const SAMPLE_INVOICE_DATA: TaxInvoiceData = {
   subtotal: 332500.00,
   totalDiscount: 6000.00,
   taxableAmount: 326500.00,
-  cgst: 0,
-  sgst: 0,
-  igst: 58770.00,
-  freight: 3500.00,
-  packingCharges: 1500.00,
+  totalCGST: 0,
+  totalSGST: 0,
+  totalIGST: 58770.00,
   roundOff: 0.30,
   grandTotal: 390270.00,
   
+  paymentTerms: '30 Days from Invoice Date',
   bankDetails: {
     bankName: COMPANY_INFO.bankDetails.bankName,
     branch: COMPANY_INFO.bankDetails.branch,
     accountNumber: COMPANY_INFO.bankDetails.accountNumber,
-    ifsc: COMPANY_INFO.bankDetails.ifsc,
-    accountType: COMPANY_INFO.bankDetails.accountType
+    ifsc: COMPANY_INFO.bankDetails.ifsc
   },
   
-  termsAndConditions: [
-    'Payment due within 30 days from invoice date.',
-    'Interest @ 18% p.a. will be charged on overdue payments.',
-    'Goods once sold will not be taken back.',
-    'Subject to Kadapa, AP jurisdiction.'
-  ],
-  
+  remarks: 'Thank you for your business!',
   preparedBy: 'Accounts Team'
 };
 
 const SAMPLE_GRN_DATA: GoodsReceiptData = {
   grnNumber: 'GRN-2026-0234',
   grnDate: '2026-01-31',
-  receivedTime: '10:30 AM',
   poNumber: 'PO-2026-001',
   poDate: '2026-01-25',
   dcNumber: 'SUP-DC-2026-089',
   dcDate: '2026-01-30',
   invoiceNumber: 'SUP-INV-2026-456',
   invoiceDate: '2026-01-30',
+  invoiceAmount: 228233.00,
   
-  supplier: {
+  vendor: {
     name: 'Premium Composites Pvt Ltd',
     address: 'Plot 45, Industrial Area, Bangalore - 560058',
     gstin: '29AABCP1234N1Z5',
-    phone: '+91 9876543210',
-    contactPerson: 'Mr. Rajesh Kumar'
+    phone: '+91 9876543210'
   },
   
-  receivedAt: {
-    name: COMPANY_INFO.name,
-    unit: 'Unit - I',
-    address: COMPANY_INFO.units.unit1.address
-  },
+  receivingLocation: 'Unit - I, Kopparthy',
   
-  transportDetails: {
+  transport: {
     vehicleNumber: 'KA01AB1234',
     driverName: 'Suresh',
     lrNumber: 'LR-2026-789',
-    numberOfPackages: 12
+    eWayBillNo: 'EWB123456789012'
   },
   
   items: [
@@ -336,11 +314,11 @@ const SAMPLE_GRN_DATA: GoodsReceiptData = {
       hsnCode: '70193900',
       unit: 'Kg',
       orderedQty: 500,
-      receivedQty: 500,
-      acceptedQty: 495,
-      rejectedQty: 5,
-      pendingQty: 0,
-      batchNumber: 'GF-B2026-045',
+      receivedQty: 495,
+      pendingQty: 5,
+      unitPrice: 185.00,
+      totalValue: 91575.00,
+      batchNo: 'GF-B2026-045',
       qualityStatus: 'Passed',
       remarks: '5 Kg damaged in transit'
     },
@@ -352,10 +330,10 @@ const SAMPLE_GRN_DATA: GoodsReceiptData = {
       unit: 'Kg',
       orderedQty: 200,
       receivedQty: 200,
-      acceptedQty: 200,
-      rejectedQty: 0,
       pendingQty: 0,
-      batchNumber: 'EP-B2026-078',
+      unitPrice: 420.00,
+      totalValue: 84000.00,
+      batchNo: 'EP-B2026-078',
       qualityStatus: 'Passed'
     },
     {
@@ -366,26 +344,24 @@ const SAMPLE_GRN_DATA: GoodsReceiptData = {
       unit: 'Kg',
       orderedQty: 50,
       receivedQty: 45,
-      acceptedQty: 45,
-      rejectedQty: 0,
       pendingQty: 5,
-      batchNumber: 'HD-B2026-012',
+      unitPrice: 380.00,
+      totalValue: 17100.00,
+      batchNo: 'HD-B2026-012',
       qualityStatus: 'Pending',
       remarks: 'Short supply - 5 Kg pending'
     }
   ],
   
   totalOrderedQty: 750,
-  totalReceivedQty: 745,
-  totalAcceptedQty: 740,
-  totalRejectedQty: 5,
-  totalPendingQty: 5,
+  totalReceivedQty: 740,
+  totalPendingQty: 10,
+  totalValue: 192675.00,
   
-  qualitySummary: {
-    passed: 2,
-    failed: 0,
-    pending: 1
-  },
+  itemsPassed: 2,
+  itemsFailed: 0,
+  itemsPending: 1,
+  overallQualityStatus: 'Partially Approved',
   
   remarks: 'Partial delivery. Balance 5 Kg Hardener pending.',
   receivedBy: 'Raju - Store Incharge',
