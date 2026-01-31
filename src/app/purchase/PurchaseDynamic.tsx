@@ -1714,7 +1714,10 @@ export default function PurchaseDynamic() {
                           whileTap={{ scale: 0.9 }}
                           onClick={() => {
                             setPrintingPO(po);
-                            setTimeout(() => handlePrint(), 100);
+                            // Wait for state to update and template to render
+                            setTimeout(() => {
+                              handlePrint();
+                            }, 300);
                           }}
                           className="w-8 h-8 bg-zinc-800 hover:bg-zinc-700 rounded-lg flex items-center justify-center"
                           title="Print PO"
@@ -2728,16 +2731,23 @@ export default function PurchaseDynamic() {
       {/* Modals */}
       {renderViewModal()}
       
-      {/* Global Hidden Print Template - for both modal and table action */}
-      {getCurrentPrintPO() && (
-        <div style={{ position: 'fixed', left: '-9999px', top: 0, zIndex: -1 }}>
+      {/* Global Hidden Print Template - always render when there's a PO to print */}
+      <div style={{ position: 'fixed', left: '-9999px', top: 0, zIndex: -1, width: '210mm' }}>
+        {printingPO && (
           <PurchaseOrderTemplate
             ref={printRef}
-            data={convertPOToPrintData(getCurrentPrintPO()!)}
+            data={convertPOToPrintData(printingPO)}
             copyType={printCopyType}
           />
-        </div>
-      )}
+        )}
+        {!printingPO && selectedItemType === 'order' && selectedItem && (
+          <PurchaseOrderTemplate
+            ref={printRef}
+            data={convertPOToPrintData(selectedItem as PurchaseOrder)}
+            copyType={printCopyType}
+          />
+        )}
+      </div>
       
       {/* Reject Request Modal */}
       <AnimatePresence>
