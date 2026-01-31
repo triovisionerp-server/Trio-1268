@@ -6,12 +6,18 @@
 // Connected to: Store ↔ Supervisor ↔ Purchase ↔ MD
 // Real-time Firebase sync across all modules
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useReactToPrint } from 'react-to-print';
 
 // Enhanced PO Form Component
 import EnhancedPOForm from './EnhancedPOForm';
+
+// Print Templates
+import PurchaseOrderTemplate, { PurchaseOrderData, DEFAULT_PO_TERMS } from './documents/PurchaseOrderTemplate';
+import { COMPANY_INFO } from './documents/DocumentTemplates';
+
 import {
   FileText,
   ShoppingCart,
@@ -167,6 +173,10 @@ export default function PurchaseDynamic() {
   const [showViewModal, setShowViewModal] = useState(false);
   const [selectedItem, setSelectedItem] = useState<MaterialRequest | PurchaseRequisition | PurchaseOrder | GoodsReceipt | PurchaseInvoice | null>(null);
   const [selectedItemType, setSelectedItemType] = useState<string>('');
+  
+  // Print states
+  const printRef = useRef<HTMLDivElement>(null);
+  const [printCopyType, setPrintCopyType] = useState<'ORIGINAL' | 'DUPLICATE' | 'VENDOR COPY' | 'OFFICE COPY'>('ORIGINAL');
   
   // Form states
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -2269,30 +2279,178 @@ export default function PurchaseDynamic() {
               </div>
               
               {/* Modal Footer */}
-              <div className="p-6 border-t border-zinc-800 flex items-center justify-end gap-3">
-                <motion.button
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  onClick={() => setShowViewModal(false)}
-                  className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-white rounded-xl"
-                >
-                  Close
-                </motion.button>
-                <motion.button
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl flex items-center gap-2"
-                >
-                  <Printer className="w-4 h-4" />
-                  Print
-                </motion.button>
+              <div className="p-6 border-t border-zinc-800 flex items-center justify-between gap-3">
+                {/* Copy Type Selector (for PO) */}
+                {selectedItemType === 'order' && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-zinc-400">Copy:</span>
+                    <select
+                      value={printCopyType}
+                      onChange={(e) => setPrintCopyType(e.target.value as 'ORIGINAL' | 'DUPLICATE' | 'VENDOR COPY' | 'OFFICE COPY')}
+                      className="bg-zinc-800 border border-zinc-700 rounded-lg px-2 py-1 text-xs text-white"
+                    >
+                      <option value="ORIGINAL">Original</option>
+                      <option value="DUPLICATE">Duplicate</option>
+                      <option value="VENDOR COPY">Vendor Copy</option>
+                      <option value="OFFICE COPY">Office Copy</option>
+                    </select>
+                  </div>
+                )}
+                {selectedItemType !== 'order' && <div />}
+                
+                <div className="flex items-center gap-3">
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={() => setShowViewModal(false)}
+                    className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-white rounded-xl"
+                  >
+                    Close
+                  </motion.button>
+                  {selectedItemType === 'order' && (
+                    <motion.button
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      onClick={() => handlePrint()}
+                      className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl flex items-center gap-2"
+                    >
+                      <Printer className="w-4 h-4" />
+                      Print
+                    </motion.button>
+                  )}
+                </div>
               </div>
+              
+              {/* Hidden Print Template */}
+              {selectedItemType === 'order' && selectedItem && (
+                <div style={{ position: 'absolute', left: '-9999px', top: 0 }}>
+                  <PurchaseOrderTemplate
+                    ref={printRef}
+                    data={convertPOToPrintData(selectedItem as PurchaseOrder)}
+                    copyType={printCopyType}
+                  />
+                </div>
+              )}
             </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
     );
   };
+  
+  // ==========================================
+  // PRINT FUNCTIONALITY
+  // ==========================================
+  
+  // Convert PurchaseOrder to PurchaseOrderData for printing
+  const convertPOToPrintData = (po: PurchaseOrder): PurchaseOrderData => {
+    const vendor = suppliers.find(s => s.id === po.vendorId) || {
+      name: po.vendorName,
+      contact: po.vendorContact || '',
+      email: '',
+      phone: '',
+      gst: '',
+      address: ''
+    };
+    
+    return {
+      poNumber: po.poNumber,
+      poDate: new Date(po.createdAt).toISOString().split('T')[0],
+      prNumber: po.prNumber,
+      validUntil: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      expectedDelivery: po.expectedDelivery || new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      deliveryLocation: 'Unit-I, Kopparthy',
+      
+      vendor: {
+        name: vendor.name || po.vendorName,
+        address: vendor.address || '',
+        gstin: vendor.gst || '',
+        stateCode: '37',
+        contactPerson: vendor.contact || po.vendorContact || '',
+        phone: vendor.phone || '',
+        email: vendor.email || ''
+      },
+      
+      buyer: {
+        name: COMPANY_INFO.name,
+        unit: 'Unit - I',
+        address: COMPANY_INFO.units.unit1.address,
+        gstin: COMPANY_INFO.gstin,
+        stateCode: '37',
+        phone: COMPANY_INFO.units.unit1.phone,
+        email: COMPANY_INFO.email
+      },
+      
+      shipTo: {
+        name: COMPANY_INFO.name,
+        address: COMPANY_INFO.units.unit1.address,
+        phone: COMPANY_INFO.units.unit1.phone,
+        contactPerson: 'Store Manager'
+      },
+      
+      items: po.items.map((item, idx) => {
+        const taxableValue = item.totalPrice;
+        const gstRate = po.taxPercent || 18;
+        const gstAmount = taxableValue * (gstRate / 100);
+        return {
+          slNo: idx + 1,
+          itemCode: item.materialCode || `MAT-${idx + 1}`,
+          description: item.materialName,
+          hsnCode: '39269099',
+          quantity: item.quantity,
+          unit: item.unit,
+          unitPrice: item.unitPrice,
+          discount: 0,
+          taxableValue: taxableValue,
+          gstRate: gstRate,
+          gstAmount: gstAmount,
+          totalAmount: taxableValue + gstAmount
+        };
+      }),
+      
+      subtotal: po.subtotal,
+      totalDiscount: 0,
+      taxableAmount: po.subtotal,
+      cgst: po.taxAmount / 2,
+      sgst: po.taxAmount / 2,
+      igst: 0,
+      roundOff: 0,
+      grandTotal: po.totalAmount,
+      
+      paymentTerms: '30 Days from Invoice Date',
+      deliveryTerms: 'Ex-Works',
+      warranty: 'As per standard terms',
+      termsAndConditions: DEFAULT_PO_TERMS,
+      
+      preparedBy: currentUser.name,
+      approvedBy: po.status === 'approved' || po.status === 'ordered' ? 'Managing Director' : undefined,
+      approvedDate: po.orderedAt ? new Date(po.orderedAt).toISOString().split('T')[0] : undefined,
+      mdApprovalRequired: po.requiresMDApproval,
+      mdApproved: po.status === 'approved' || po.status === 'ordered' || po.status === 'received',
+      status: po.status === 'approved' ? 'Approved' : 
+              po.status === 'pending_md_approval' ? 'Pending Approval' :
+              po.status === 'ordered' ? 'Sent to Vendor' :
+              po.status === 'received' ? 'Completed' :
+              po.status === 'cancelled' ? 'Cancelled' : 'Draft'
+    };
+  };
+  
+  // Print handler
+  const handlePrint = useReactToPrint({
+    contentRef: printRef,
+    documentTitle: selectedItemType === 'order' && selectedItem 
+      ? `PO_${(selectedItem as PurchaseOrder).poNumber}` 
+      : 'Document',
+    pageStyle: `
+      @page { size: A4; margin: 10mm; }
+      @media print {
+        html, body { 
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
+        }
+      }
+    `
+  });
   
   // ==========================================
   // MAIN RENDER
