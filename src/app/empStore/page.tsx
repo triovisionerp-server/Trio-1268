@@ -5,13 +5,16 @@ import {
   Plus, X, Download, Edit2, Trash2, Package,
   Building2, BarChart3, AlertTriangle, DollarSign, Search,
   History, Clock, CheckCircle2, RefreshCw, FolderKanban,
-  Calendar, Save, Lock, ChevronLeft, ChevronRight
+  Calendar, Save, Lock, ChevronLeft, ChevronRight,
+  Truck, ShoppingCart, Eye
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import * as XLSX from 'xlsx';
 import { db } from '@/lib/firebase';
-import { doc, writeBatch, collection, addDoc, getDocs, query, orderBy } from 'firebase/firestore';
+import { doc, writeBatch, collection, addDoc, getDocs, query, orderBy, onSnapshot, where } from 'firebase/firestore';
 import type { DailyStockRecord, DailyMaterialStock } from '@/types/inventory';
+import type { PurchaseOrder } from '@/lib/services/integratedProcurementService';
+import { COLLECTIONS, formatCurrency } from '@/lib/services/integratedProcurementService';
 
 // Firebase Collection Names (shared with Purchase/Store pages)
 const FB_MATERIALS = 'inventory_materials';
@@ -304,13 +307,18 @@ const SAMPLE_MATERIALS: StockItem[] = [
 const EmployeeStore = () => {
   // --- State ---
   const isDarkMode = true; // Always dark theme
-  const [activeTab, setActiveTab] = useState<'daily-stock' | 'stock-updates' | 'materials' | 'suppliers' | 'analytics' | 'audit'>('daily-stock');
+  const [activeTab, setActiveTab] = useState<'daily-stock' | 'incoming-orders' | 'stock-updates' | 'materials' | 'suppliers' | 'analytics' | 'audit'>('daily-stock');
   
   // Data State
   const [stockItems, setStockItems] = useState<StockItem[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+  
+  // Incoming Orders State (from Purchase module)
+  const [incomingOrders, setIncomingOrders] = useState<PurchaseOrder[]>([]);
+  const [selectedIncomingOrder, setSelectedIncomingOrder] = useState<PurchaseOrder | null>(null);
+  const [showIncomingOrderModal, setShowIncomingOrderModal] = useState(false);
   
   // Daily Stock State
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
@@ -408,6 +416,30 @@ const EmployeeStore = () => {
   useEffect(() => localStorage.setItem('empStoreProjects', JSON.stringify(projects)), [projects]);
   useEffect(() => localStorage.setItem('empStoreSuppliers', JSON.stringify(suppliers)), [suppliers]);
   useEffect(() => localStorage.setItem('empStoreAuditLogs', JSON.stringify(auditLogs)), [auditLogs]);
+
+  // --- Subscribe to Incoming Orders from Purchase Module ---
+  useEffect(() => {
+    // Subscribe to POs with status 'ordered' or 'partially_received' - these are "incoming" to the store
+    const unsubscribe = onSnapshot(
+      query(
+        collection(db, COLLECTIONS.PURCHASE_ORDERS),
+        where('status', 'in', ['ordered', 'partially_received', 'approved']),
+        orderBy('createdAt', 'desc')
+      ),
+      (snapshot) => {
+        const orders: PurchaseOrder[] = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        })) as PurchaseOrder[];
+        setIncomingOrders(orders);
+      },
+      (error) => {
+        console.error('Error fetching incoming orders:', error);
+      }
+    );
+
+    return () => unsubscribe();
+  }, []);
 
   // --- Calculations (moved up for Firebase sync) ---
   const calculateClosingStock = useCallback((item: StockItem): number => {
@@ -1008,6 +1040,7 @@ const EmployeeStore = () => {
         <div className="max-w-full px-4 flex gap-0.5 overflow-x-auto scrollbar-hide">
           {[
             { id: 'daily-stock', label: 'Daily Stock', icon: Calendar },
+            { id: 'incoming-orders', label: 'Incoming Orders', icon: Truck },
             { id: 'stock-updates', label: 'Stock Entry', icon: Package },
             { id: 'materials', label: 'Materials', icon: Package },
             { id: 'suppliers', label: 'Suppliers', icon: Building2 },
@@ -1028,6 +1061,11 @@ const EmployeeStore = () => {
               {tab.id === 'daily-stock' && todayRecord && (
                 <span className="px-1.5 py-0.5 text-[10px] font-semibold rounded-full bg-emerald-500/20 text-emerald-400">
                   ✓
+                </span>
+              )}
+              {tab.id === 'incoming-orders' && incomingOrders.length > 0 && (
+                <span className="px-1.5 py-0.5 text-[10px] font-semibold rounded-full bg-blue-500/20 text-blue-400">
+                  {incomingOrders.length}
                 </span>
               )}
               {tab.id === 'audit' && auditLogs.length > 0 && (
@@ -1330,6 +1368,302 @@ const EmployeeStore = () => {
             )}
           </motion.div>
         )}
+
+        {/* ═══════════════════════════════════════════════════════════════ */}
+        {/* --- Tab: Incoming Orders (from Purchase Module) --- */}
+        {/* ═══════════════════════════════════════════════════════════════ */}
+        {activeTab === 'incoming-orders' && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="space-y-4"
+          >
+            {/* Header */}
+            <div className="bg-gradient-to-r from-blue-900/30 via-indigo-900/20 to-cyan-900/30 border border-blue-500/30 rounded-2xl p-5">
+              <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                <div>
+                  <h2 className="text-xl font-semibold text-white flex items-center gap-2">
+                    <Truck className="w-5 h-5 text-blue-400" />
+                    Incoming Orders
+                  </h2>
+                  <p className="text-zinc-400 text-sm mt-1">
+                    Purchase orders confirmed with vendors - awaiting delivery
+                  </p>
+                </div>
+                
+                <div className="flex items-center gap-3">
+                  <div className="px-4 py-2 rounded-xl bg-blue-500/20 border border-blue-500/30">
+                    <span className="text-blue-400 text-sm font-medium">
+                      {incomingOrders.filter(o => o.status === 'ordered').length} Orders Placed
+                    </span>
+                  </div>
+                  <div className="px-4 py-2 rounded-xl bg-amber-500/20 border border-amber-500/30">
+                    <span className="text-amber-400 text-sm font-medium">
+                      {incomingOrders.filter(o => o.status === 'partially_received').length} Partial
+                    </span>
+                  </div>
+                  <div className="px-4 py-2 rounded-xl bg-emerald-500/20 border border-emerald-500/30">
+                    <span className="text-emerald-400 text-sm font-medium">
+                      {incomingOrders.filter(o => o.status === 'approved').length} Approved
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Summary Cards */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="bg-zinc-900/80 border border-blue-900/50 rounded-xl p-4">
+                <div className="text-blue-500 text-xs mb-1">Total Incoming</div>
+                <div className="text-2xl font-bold text-blue-400">{incomingOrders.length}</div>
+              </div>
+              <div className="bg-zinc-900/80 border border-indigo-900/50 rounded-xl p-4">
+                <div className="text-indigo-500 text-xs mb-1">Total Value</div>
+                <div className="text-xl font-bold text-indigo-400">
+                  {formatCurrency(incomingOrders.reduce((sum, o) => sum + (o.totalAmount || 0), 0))}
+                </div>
+              </div>
+              <div className="bg-zinc-900/80 border border-cyan-900/50 rounded-xl p-4">
+                <div className="text-cyan-500 text-xs mb-1">Total Items</div>
+                <div className="text-2xl font-bold text-cyan-400">
+                  {incomingOrders.reduce((sum, o) => sum + (o.items?.length || 0), 0)}
+                </div>
+              </div>
+              <div className="bg-zinc-900/80 border border-amber-900/50 rounded-xl p-4">
+                <div className="text-amber-500 text-xs mb-1">Unique Suppliers</div>
+                <div className="text-2xl font-bold text-amber-400">
+                  {new Set(incomingOrders.map(o => o.vendorId)).size}
+                </div>
+              </div>
+            </div>
+
+            {/* Orders Table */}
+            {incomingOrders.length === 0 ? (
+              <div className="bg-zinc-900/80 border border-zinc-800 rounded-xl p-12 text-center">
+                <Truck className="w-12 h-12 text-zinc-600 mx-auto mb-3" />
+                <h3 className="text-lg font-medium text-zinc-400">No Incoming Orders</h3>
+                <p className="text-zinc-500 text-sm mt-1">
+                  When purchase orders are confirmed, they will appear here
+                </p>
+              </div>
+            ) : (
+              <div className="bg-zinc-900/80 border border-zinc-800 rounded-xl overflow-hidden">
+                <div className="overflow-x-auto max-h-[55vh]">
+                  <table className="w-full text-sm">
+                    <thead className="sticky top-0 z-10 bg-zinc-800">
+                      <tr>
+                        <th className="border border-zinc-700 px-4 py-3 text-left text-zinc-400 font-semibold">PO Number</th>
+                        <th className="border border-zinc-700 px-4 py-3 text-left text-zinc-400 font-semibold">Vendor</th>
+                        <th className="border border-zinc-700 px-4 py-3 text-left text-zinc-400 font-semibold">Items</th>
+                        <th className="border border-zinc-700 px-4 py-3 text-right text-zinc-400 font-semibold">Amount</th>
+                        <th className="border border-zinc-700 px-4 py-3 text-center text-zinc-400 font-semibold">Expected Date</th>
+                        <th className="border border-zinc-700 px-4 py-3 text-center text-zinc-400 font-semibold">Status</th>
+                        <th className="border border-zinc-700 px-4 py-3 text-center text-zinc-400 font-semibold">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {incomingOrders.map((order, index) => (
+                        <tr 
+                          key={order.id}
+                          className={`hover:bg-zinc-800/50 ${index % 2 === 0 ? 'bg-zinc-900/50' : 'bg-zinc-900/30'}`}
+                        >
+                          <td className="border border-zinc-800 px-4 py-3">
+                            <span className="text-blue-400 font-medium">{order.poNumber}</span>
+                          </td>
+                          <td className="border border-zinc-800 px-4 py-3 text-white">
+                            {order.vendorName || 'N/A'}
+                          </td>
+                          <td className="border border-zinc-800 px-4 py-3">
+                            <div className="flex flex-col gap-1">
+                              {order.items?.slice(0, 2).map((item, i) => (
+                                <span key={i} className="text-zinc-300 text-xs">
+                                  • {item.materialName} ({item.quantity} {item.unit})
+                                </span>
+                              ))}
+                              {(order.items?.length || 0) > 2 && (
+                                <span className="text-zinc-500 text-xs">
+                                  +{(order.items?.length || 0) - 2} more items
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="border border-zinc-800 px-4 py-3 text-right">
+                            <span className="text-emerald-400 font-medium">
+                              {formatCurrency(order.totalAmount || 0)}
+                            </span>
+                          </td>
+                          <td className="border border-zinc-800 px-4 py-3 text-center">
+                            <span className="text-zinc-300">
+                              {order.expectedDelivery 
+                                ? new Date(order.expectedDelivery).toLocaleDateString('en-IN')
+                                : 'Not set'}
+                            </span>
+                          </td>
+                          <td className="border border-zinc-800 px-4 py-3 text-center">
+                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                              order.status === 'ordered' 
+                                ? 'bg-blue-500/20 text-blue-400' 
+                                : order.status === 'partially_received'
+                                ? 'bg-amber-500/20 text-amber-400'
+                                : order.status === 'approved'
+                                ? 'bg-emerald-500/20 text-emerald-400'
+                                : 'bg-zinc-500/20 text-zinc-400'
+                            }`}>
+                              {order.status === 'ordered' ? '🚚 Ordered' :
+                               order.status === 'partially_received' ? '📦 Partial' :
+                               order.status === 'approved' ? '✓ Approved' :
+                               order.status}
+                            </span>
+                          </td>
+                          <td className="border border-zinc-800 px-4 py-3 text-center">
+                            <button
+                              onClick={() => {
+                                setSelectedIncomingOrder(order);
+                                setShowIncomingOrderModal(true);
+                              }}
+                              className="px-3 py-1.5 rounded-lg bg-indigo-500/20 border border-indigo-500/30 text-indigo-400 text-xs font-medium hover:bg-indigo-500/30 transition-all flex items-center gap-1 mx-auto"
+                            >
+                              <Eye className="w-3 h-3" />
+                              View
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </motion.div>
+        )}
+
+        {/* Incoming Order Detail Modal */}
+        <AnimatePresence>
+          {showIncomingOrderModal && selectedIncomingOrder && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+              onClick={() => setShowIncomingOrderModal(false)}
+            >
+              <motion.div
+                initial={{ scale: 0.95, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.95, opacity: 0 }}
+                onClick={(e) => e.stopPropagation()}
+                className="bg-zinc-900 border border-zinc-700 rounded-2xl w-full max-w-2xl max-h-[80vh] overflow-hidden"
+              >
+                {/* Header */}
+                <div className="p-6 border-b border-zinc-800 flex items-center justify-between">
+                  <div>
+                    <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                      <ShoppingCart className="w-5 h-5 text-blue-400" />
+                      {selectedIncomingOrder.poNumber}
+                    </h3>
+                    <p className="text-zinc-400 text-sm mt-1">
+                      {selectedIncomingOrder.vendorName} • Created {new Date(selectedIncomingOrder.createdAt).toLocaleDateString('en-IN')}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setShowIncomingOrderModal(false)}
+                    className="p-2 rounded-lg hover:bg-zinc-800 transition-colors"
+                  >
+                    <X className="w-5 h-5 text-zinc-400" />
+                  </button>
+                </div>
+
+                {/* Content */}
+                <div className="p-6 space-y-4 overflow-y-auto max-h-[60vh]">
+                  {/* Status Banner */}
+                  <div className={`p-4 rounded-xl ${
+                    selectedIncomingOrder.status === 'ordered'
+                      ? 'bg-blue-500/10 border border-blue-500/30'
+                      : selectedIncomingOrder.status === 'partially_received'
+                      ? 'bg-amber-500/10 border border-amber-500/30'
+                      : 'bg-emerald-500/10 border border-emerald-500/30'
+                  }`}>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <span className={`text-sm font-medium ${
+                          selectedIncomingOrder.status === 'ordered' ? 'text-blue-400' :
+                          selectedIncomingOrder.status === 'partially_received' ? 'text-amber-400' :
+                          'text-emerald-400'
+                        }`}>
+                          {selectedIncomingOrder.status === 'ordered' ? '🚚 Order Placed - Awaiting Delivery' :
+                           selectedIncomingOrder.status === 'partially_received' ? '📦 Partially Received' :
+                           '✓ Approved - Ready to Order'}
+                        </span>
+                        {selectedIncomingOrder.expectedDelivery && (
+                          <p className="text-zinc-400 text-xs mt-1">
+                            Expected: {new Date(selectedIncomingOrder.expectedDelivery).toLocaleDateString('en-IN', {
+                              weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+                            })}
+                          </p>
+                        )}
+                      </div>
+                      <div className="text-right">
+                        <div className="text-zinc-400 text-xs">Total Amount</div>
+                        <div className="text-xl font-bold text-emerald-400">
+                          {formatCurrency(selectedIncomingOrder.totalAmount || 0)}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Items List */}
+                  <div>
+                    <h4 className="text-sm font-medium text-zinc-400 mb-2">Order Items</h4>
+                    <div className="bg-zinc-800/50 rounded-xl border border-zinc-700 overflow-hidden">
+                      <table className="w-full text-sm">
+                        <thead className="bg-zinc-800">
+                          <tr>
+                            <th className="px-4 py-2 text-left text-zinc-400 text-xs">Material</th>
+                            <th className="px-4 py-2 text-right text-zinc-400 text-xs">Qty</th>
+                            <th className="px-4 py-2 text-right text-zinc-400 text-xs">Rate</th>
+                            <th className="px-4 py-2 text-right text-zinc-400 text-xs">Amount</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {selectedIncomingOrder.items?.map((item, index) => (
+                            <tr key={index} className="border-t border-zinc-700">
+                              <td className="px-4 py-2 text-white">{item.materialName}</td>
+                              <td className="px-4 py-2 text-right text-zinc-300">{item.quantity} {item.unit}</td>
+                              <td className="px-4 py-2 text-right text-zinc-300">{formatCurrency(item.unitPrice || 0)}</td>
+                              <td className="px-4 py-2 text-right text-emerald-400 font-medium">
+                                {formatCurrency(item.totalPrice || (item.quantity * (item.unitPrice || 0)))}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* Vendor Info */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="bg-zinc-800/50 rounded-xl p-4 border border-zinc-700">
+                      <div className="text-zinc-500 text-xs mb-1">Vendor</div>
+                      <div className="text-white font-medium">{selectedIncomingOrder.vendorName}</div>
+                      <div className="text-zinc-400 text-sm">{selectedIncomingOrder.vendorGST || 'GST N/A'}</div>
+                    </div>
+                    <div className="bg-zinc-800/50 rounded-xl p-4 border border-zinc-700">
+                      <div className="text-zinc-500 text-xs mb-1">Payment Terms</div>
+                      <div className="text-white font-medium">{selectedIncomingOrder.paymentTerms || 'Net 30'}</div>
+                    </div>
+                  </div>
+
+                  {selectedIncomingOrder.notes && (
+                    <div className="bg-zinc-800/50 rounded-xl p-4 border border-zinc-700">
+                      <div className="text-zinc-500 text-xs mb-1">Notes</div>
+                      <div className="text-zinc-300 text-sm">{selectedIncomingOrder.notes}</div>
+                    </div>
+                  )}
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* --- Tab: Stock Updates (Excel-Style Grid) --- */}
         {activeTab === 'stock-updates' && (

@@ -1052,7 +1052,7 @@ export default function MDDashboard() {
 
             {/* PO Summary Stats */}
             <div className="p-6">
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+              <div className="grid grid-cols-3 md:grid-cols-6 gap-4 mb-6">
                 <div className="text-center p-4 rounded-xl bg-white/5 border border-white/10">
                   <div className="text-3xl font-bold text-white">{allPurchaseOrders.length}</div>
                   <div className="text-xs text-zinc-500 mt-1">Total POs</div>
@@ -1069,17 +1069,23 @@ export default function MDDashboard() {
                   </div>
                   <div className="text-xs text-emerald-500 mt-1">Approved</div>
                 </div>
-                <div className="text-center p-4 rounded-xl bg-red-500/10 border border-red-500/30">
-                  <div className="text-3xl font-bold text-red-400">
-                    {allPurchaseOrders.filter(o => o.status === 'rejected').length}
+                <div className="text-center p-4 rounded-xl bg-blue-500/10 border border-blue-500/30">
+                  <div className="text-3xl font-bold text-blue-400">
+                    {allPurchaseOrders.filter(o => o.status === 'ordered' || o.status === 'partially_received').length}
                   </div>
-                  <div className="text-xs text-red-500 mt-1">Rejected</div>
+                  <div className="text-xs text-blue-500 mt-1">🚚 Incoming</div>
                 </div>
                 <div className="text-center p-4 rounded-xl bg-cyan-500/10 border border-cyan-500/30">
                   <div className="text-3xl font-bold text-cyan-400">
                     {allPurchaseOrders.filter(o => o.status === 'received').length}
                   </div>
                   <div className="text-xs text-cyan-500 mt-1">Received</div>
+                </div>
+                <div className="text-center p-4 rounded-xl bg-red-500/10 border border-red-500/30">
+                  <div className="text-3xl font-bold text-red-400">
+                    {allPurchaseOrders.filter(o => o.status === 'rejected').length}
+                  </div>
+                  <div className="text-xs text-red-500 mt-1">Rejected</div>
                 </div>
               </div>
 
@@ -1097,12 +1103,14 @@ export default function MDDashboard() {
                         po.status === 'pending_md_approval' ? 'bg-amber-500/20' :
                         po.status === 'approved' ? 'bg-emerald-500/20' :
                         po.status === 'rejected' ? 'bg-red-500/20' :
+                        po.status === 'ordered' || po.status === 'partially_received' ? 'bg-blue-500/20' :
                         'bg-cyan-500/20'
                       }`}>
                         <ShoppingCart className={`w-5 h-5 ${
                           po.status === 'pending_md_approval' ? 'text-amber-400' :
                           po.status === 'approved' ? 'text-emerald-400' :
                           po.status === 'rejected' ? 'text-red-400' :
+                          po.status === 'ordered' || po.status === 'partially_received' ? 'text-blue-400' :
                           'text-cyan-400'
                         }`} />
                       </div>
@@ -1119,9 +1127,14 @@ export default function MDDashboard() {
                         po.status === 'pending_md_approval' ? 'bg-amber-500/20 text-amber-400' :
                         po.status === 'approved' ? 'bg-emerald-500/20 text-emerald-400' :
                         po.status === 'rejected' ? 'bg-red-500/20 text-red-400' :
+                        po.status === 'ordered' ? 'bg-blue-500/20 text-blue-400' :
+                        po.status === 'partially_received' ? 'bg-orange-500/20 text-orange-400' :
                         'bg-cyan-500/20 text-cyan-400'
                       }`}>
-                        {po.status === 'pending_md_approval' ? 'PENDING' : po.status?.toUpperCase()}
+                        {po.status === 'pending_md_approval' ? 'PENDING' : 
+                         po.status === 'ordered' ? '🚚 INCOMING' :
+                         po.status === 'partially_received' ? '📦 PARTIAL' :
+                         po.status?.toUpperCase()}
                       </span>
                     </div>
                   </div>
