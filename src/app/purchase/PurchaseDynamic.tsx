@@ -177,6 +177,7 @@ export default function PurchaseDynamic() {
   // Print states
   const printRef = useRef<HTMLDivElement>(null);
   const [printCopyType, setPrintCopyType] = useState<'ORIGINAL' | 'DUPLICATE' | 'VENDOR COPY' | 'OFFICE COPY'>('ORIGINAL');
+  const [printingPO, setPrintingPO] = useState<PurchaseOrder | null>(null);
   
   // Form states
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -1711,8 +1712,12 @@ export default function PurchaseDynamic() {
                         <motion.button
                           whileHover={{ scale: 1.1 }}
                           whileTap={{ scale: 0.9 }}
+                          onClick={() => {
+                            setPrintingPO(po);
+                            setTimeout(() => handlePrint(), 100);
+                          }}
                           className="w-8 h-8 bg-zinc-800 hover:bg-zinc-700 rounded-lg flex items-center justify-center"
-                          title="Print"
+                          title="Print PO"
                         >
                           <Printer className="w-4 h-4 text-zinc-400" />
                         </motion.button>
@@ -2320,17 +2325,6 @@ export default function PurchaseDynamic() {
                   )}
                 </div>
               </div>
-              
-              {/* Hidden Print Template */}
-              {selectedItemType === 'order' && selectedItem && (
-                <div style={{ position: 'absolute', left: '-9999px', top: 0 }}>
-                  <PurchaseOrderTemplate
-                    ref={printRef}
-                    data={convertPOToPrintData(selectedItem as PurchaseOrder)}
-                    copyType={printCopyType}
-                  />
-                </div>
-              )}
             </motion.div>
           </motion.div>
         )}
@@ -2435,12 +2429,22 @@ export default function PurchaseDynamic() {
     };
   };
   
+  // Get current PO for printing (from modal or direct action)
+  const getCurrentPrintPO = (): PurchaseOrder | null => {
+    if (printingPO) return printingPO;
+    if (selectedItemType === 'order' && selectedItem) return selectedItem as PurchaseOrder;
+    return null;
+  };
+  
   // Print handler
   const handlePrint = useReactToPrint({
     contentRef: printRef,
-    documentTitle: selectedItemType === 'order' && selectedItem 
-      ? `PO_${(selectedItem as PurchaseOrder).poNumber}` 
+    documentTitle: getCurrentPrintPO() 
+      ? `PO_${getCurrentPrintPO()?.poNumber}` 
       : 'Document',
+    onAfterPrint: () => {
+      setPrintingPO(null);
+    },
     pageStyle: `
       @page { size: A4; margin: 10mm; }
       @media print {
@@ -2723,6 +2727,17 @@ export default function PurchaseDynamic() {
       
       {/* Modals */}
       {renderViewModal()}
+      
+      {/* Global Hidden Print Template - for both modal and table action */}
+      {getCurrentPrintPO() && (
+        <div style={{ position: 'fixed', left: '-9999px', top: 0, zIndex: -1 }}>
+          <PurchaseOrderTemplate
+            ref={printRef}
+            data={convertPOToPrintData(getCurrentPrintPO()!)}
+            copyType={printCopyType}
+          />
+        </div>
+      )}
       
       {/* Reject Request Modal */}
       <AnimatePresence>
