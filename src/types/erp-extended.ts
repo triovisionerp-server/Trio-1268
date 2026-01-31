@@ -2,7 +2,7 @@
 // EXTENDED ERP TYPES - Complete Feature Set
 // ==========================================
 
-import { Timestamp } from 'firebase/firestore';
+// Firebase Timestamp import removed - using ISO strings instead
 
 // ==========================================
 // 1. STOCK ALERTS & NOTIFICATIONS

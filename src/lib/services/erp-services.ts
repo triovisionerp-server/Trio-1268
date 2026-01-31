@@ -25,9 +25,7 @@ import {
   MaterialBatch,
   BatchMovement,
   MaterialTransfer,
-  TransferItem,
   InventoryAudit,
-  AuditItem,
   StockAdjustment,
   MaterialReservation,
   ReorderRule,
@@ -38,9 +36,7 @@ import {
   ReportConfig,
   ReportHistory,
   ERP_COLLECTIONS,
-  AlertLevel,
-  TransferStatus,
-  AuditStatus
+  AlertLevel
 } from '@/types/erp-extended';
 
 // ==========================================
@@ -755,7 +751,7 @@ export const analyticsService = {
   async calculateKPIs(): Promise<InventoryKPIs> {
     const materialsSnap = await getDocs(collection(db, ERP_COLLECTIONS.MATERIALS));
     const issueRecordsSnap = await getDocs(collection(db, 'inventory_issue_records'));
-    const purchaseEntriesSnap = await getDocs(collection(db, 'inventory_purchase_entries'));
+    // Purchase entries can be used for additional KPIs if needed
 
     let totalStockValue = 0;
     let lowStockItems = 0;
@@ -798,11 +794,12 @@ export const analyticsService = {
 
     const topMovingMaterials = Object.entries(materialMovement)
       .map(([materialId, data]) => ({ materialId, name: data.name, movement: data.movement }))
+      .filter(item => item.movement > 0)
       .sort((a, b) => b.movement - a.movement)
       .slice(0, 10);
 
     const slowMovingMaterials = Object.entries(materialMovement)
-      .filter(([_, data]) => data.movement === 0)
+      .filter(([, data]) => data.movement === 0)
       .map(([materialId, data]) => ({ materialId, name: data.name, lastMovement: 'Never' }))
       .slice(0, 10);
 
@@ -841,7 +838,7 @@ export const analyticsService = {
     );
 
     let totalOrders = 0;
-    let onTimeDeliveries = 0;
+    const onTimeDeliveries = 0; // TODO: Implement delivery tracking
     let totalPurchaseValue = 0;
 
     purchaseOrdersSnap.forEach(d => {
@@ -871,6 +868,7 @@ export const analyticsService = {
   },
 
   // Get consumption trends
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async getConsumptionTrends(materialId: string, periodType: 'daily' | 'weekly' | 'monthly' = 'daily'): Promise<ConsumptionTrend[]> {
     const issueRecordsSnap = await getDocs(
       query(
@@ -954,8 +952,9 @@ export const reportService = {
   },
 
   // Generate report data
-  async generateReportData(config: ReportConfig): Promise<any[]> {
-    const { reportType, filters } = config;
+  async generateReportData(config: ReportConfig): Promise<Record<string, unknown>[]> {
+    const { reportType } = config;
+    // filters can be used for date range filtering if needed
 
     switch (reportType) {
       case 'inventory_summary': {
@@ -970,13 +969,21 @@ export const reportService = {
         const issueSnap = await getDocs(collection(db, 'inventory_issue_records'));
         const purchaseSnap = await getDocs(collection(db, 'inventory_purchase_entries'));
 
-        const movements = [
-          ...issueSnap.docs.map(d => ({ ...d.data(), type: 'issue', id: d.id })),
-          ...purchaseSnap.docs.map(d => ({ ...d.data(), type: 'purchase', id: d.id }))
+        interface MovementRecord {
+          id: string;
+          type: string;
+          date?: string;
+          created_at?: string;
+          [key: string]: unknown;
+        }
+
+        const movements: MovementRecord[] = [
+          ...issueSnap.docs.map(d => ({ ...d.data(), type: 'issue', id: d.id } as MovementRecord)),
+          ...purchaseSnap.docs.map(d => ({ ...d.data(), type: 'purchase', id: d.id } as MovementRecord))
         ];
 
-        return movements.sort((a: any, b: any) =>
-          new Date(b.date || b.created_at).getTime() - new Date(a.date || a.created_at).getTime()
+        return movements.sort((a, b) =>
+          new Date(b.date || b.created_at || '').getTime() - new Date(a.date || a.created_at || '').getTime()
         );
       }
 
@@ -987,9 +994,15 @@ export const reportService = {
 
       case 'low_stock_alert': {
         const snapshot = await getDocs(collection(db, ERP_COLLECTIONS.MATERIALS));
+        interface MaterialRecord {
+          id: string;
+          current_stock?: number;
+          min_stock?: number;
+          [key: string]: unknown;
+        }
         return snapshot.docs
-          .map(d => ({ id: d.id, ...d.data() }))
-          .filter((m: any) => m.current_stock <= (m.min_stock || 0));
+          .map(d => ({ id: d.id, ...d.data() } as MaterialRecord))
+          .filter((m) => (m.current_stock || 0) <= (m.min_stock || 0));
       }
 
       default:
