@@ -1,6 +1,8 @@
 'use client';
 
 import React, { useMemo } from 'react';
+/* eslint-disable @next/next/no-img-element */
+// Using standard img tag instead of Next.js Image for print compatibility
 
 // ==========================================
 // COMPANY DETAILS - Triovision
@@ -54,6 +56,10 @@ export const printStyles = `
       padding: 0 !important;
       box-shadow: none !important;
     }
+    .doc-container img {
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
     .page-break {
       page-break-before: always;
     }
@@ -90,11 +96,15 @@ export const DocumentHeader: React.FC<DocumentHeaderProps> = ({
     <div className="border-b-2 border-blue-800 pb-4 mb-4">
       {/* Top Row - Logo & Copy Type */}
       <div className="flex justify-between items-start mb-4">
-        {/* Logo */}
+        {/* Logo - Using actual company logo with standard img for print compatibility */}
         <div className="flex items-center gap-3">
-          <div className="w-14 h-14 bg-gradient-to-br from-blue-700 to-cyan-500 rounded-lg flex items-center justify-center shadow-lg">
-            <span className="text-white font-bold text-2xl">T</span>
-          </div>
+          <img 
+            src="/Tlogo.png" 
+            alt="Triovision Logo" 
+            width={64} 
+            height={64}
+            className="w-16 h-16 object-contain"
+          />
           <div>
             <h1 className="text-xl font-bold text-blue-800 tracking-wide">TRIOVISION</h1>
             <p className="text-xs text-gray-600 font-medium">Composite Technologies Pvt Ltd</p>
