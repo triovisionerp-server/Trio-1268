@@ -9,7 +9,8 @@ import {
   Calendar, Filter, Link2, History,
   BarChart3, TrendingUp, Bell,
   ExternalLink, ArrowUpRight, ArrowDownRight, Package,
-  IndianRupee, Star, MessageSquare, Share2
+  IndianRupee, Star, MessageSquare, Share2,
+  Layers, Workflow, Calculator, Factory
 } from 'lucide-react';
 import { db } from '@/lib/firebase/client';
 import {
@@ -17,6 +18,8 @@ import {
   query, orderBy, writeBatch
 } from 'firebase/firestore';
 import { toast } from '@/lib/toast';
+import { manufacturingService } from '@/lib/services/manufacturing-service';
+import type { EngineeringBOM, ManufacturingBOM, MRPRun, ProductionOrder, eBOMItem } from '@/types/manufacturing';
 
 // ==========================================
 // TYPES & INTERFACES
@@ -99,8 +102,9 @@ const PURCHASE_PHASES = [
     gradient: 'from-blue-500 to-blue-600',
     documents: [
       { id: 'production-plan', name: 'Production Plan', code: 'PP' },
-      { id: 'bom', name: 'Bill of Materials (BOM)', code: 'BOM' },
-      { id: 'mrp', name: 'Material Requirement Planning', code: 'MRP' },
+      { id: 'ebom', name: 'Engineering BOM (eBOM)', code: 'eBOM', primary: true },
+      { id: 'mbom', name: 'Manufacturing BOM (mBOM)', code: 'mBOM', primary: true },
+      { id: 'mrp', name: 'Material Requirement Planning', code: 'MRP', primary: true },
       { id: 'stock-status', name: 'Stock Status Report', code: 'SSR' },
       { id: 'purchase-requisition', name: 'Purchase Requisition (PR)', code: 'PR', primary: true },
       { id: 'budget-note', name: 'Budget Availability Note', code: 'BAN' },
@@ -207,6 +211,10 @@ const COLLECTIONS_MAP: Record<string, string> = {
   'delivery-challan': 'purchase_challans',
   'debit-note': 'purchase_debit_notes',
   'credit-note': 'purchase_credit_notes',
+  'ebom': 'engineering_boms',
+  'mbom': 'manufacturing_boms',
+  'mrp': 'mrp_runs',
+  'production-order': 'production_orders',
 };
 
 // Status colors
@@ -313,6 +321,10 @@ export default function PurchaseWorkflowEnhanced() {
   const [documents, setDocuments] = useState<BaseDocument[]>([]);
   const [materials, setMaterials] = useState<Material[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [eBOMs, setEBOMs] = useState<EngineeringBOM[]>([]);
+  const [mBOMs, setMBOMs] = useState<ManufacturingBOM[]>([]);
+  const [mrpRuns, setMRPRuns] = useState<MRPRun[]>([]);
+  const [productionOrders, setProductionOrders] = useState<ProductionOrder[]>([]);
   const [stats, setStats] = useState({
     total: 0,
     pending: 0,
@@ -363,9 +375,19 @@ export default function PurchaseWorkflowEnhanced() {
       }
     );
 
+    // Subscribe to manufacturing data
+    const unsubEBOMs = manufacturingService.eBOM.subscribe(setEBOMs);
+    const unsubMBOMs = manufacturingService.mBOM.subscribe(setMBOMs);
+    const unsubMRP = manufacturingService.mrp.subscribe(setMRPRuns);
+    const unsubProdOrders = manufacturingService.productionOrder.subscribe(setProductionOrders);
+
     return () => {
       unsubMaterials();
       unsubSuppliers();
+      unsubEBOMs();
+      unsubMBOMs();
+      unsubMRP();
+      unsubProdOrders();
     };
   }, []);
 
@@ -702,6 +724,190 @@ export default function PurchaseWorkflowEnhanced() {
       </body>
       </html>
     `;
+  };
+
+  // ==========================================
+  // MANUFACTURING HANDLERS (eBOM, mBOM, MRP)
+  // ==========================================
+
+  // Create new eBOM from project
+  const handleCreateEBOM = async (projectId: string, projectName: string) => {
+    try {
+      const ebomId = await manufacturingService.eBOMService.create({
+        projectId,
+        projectName,
+        version: '1.0',
+        status: 'draft' as const,
+        items: [],
+        totalMaterialCost: 0,
+        totalLabourCost: 0,
+        overheadPercent: 0,
+        stockAnalysis: {
+          inStock: 0,
+          partialStock: 0,
+          outOfStock: 0,
+          totalShortfall: 0
+        },
+        createdBy: user?.displayName || user?.email || 'System',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      });
+      toast.success('eBOM created successfully');
+      return ebomId;
+    } catch (error) {
+      console.error('Error creating eBOM:', error);
+      toast.error('Failed to create eBOM');
+    }
+  };
+
+  // Add item to eBOM
+  const handleAddEBOMItem = async (ebomId: string, item: Partial<eBOMItem>) => {
+    try {
+      await manufacturingService.eBOMService.addItem(ebomId, item as eBOMItem);
+      toast.success('Item added to eBOM');
+    } catch (error) {
+      console.error('Error adding eBOM item:', error);
+      toast.error('Failed to add item');
+    }
+  };
+
+  // Convert eBOM to mBOM
+  const handleConvertToMBOM = async (ebomId: string) => {
+    try {
+      const mbomId = await manufacturingService.eBOMService.convertToMBOM(ebomId);
+      toast.success('Successfully converted eBOM to mBOM');
+      return mbomId;
+    } catch (error) {
+      console.error('Error converting to mBOM:', error);
+      toast.error('Failed to convert to mBOM');
+    }
+  };
+
+  // Run MRP calculation
+  const handleRunMRP = async (mbomId: string, requiredDate: string) => {
+    try {
+      const mrpRunId = await manufacturingService.mrpService.runMRP(mbomId, requiredDate);
+      toast.success('MRP calculation completed');
+      return mrpRunId;
+    } catch (error) {
+      console.error('Error running MRP:', error);
+      toast.error('Failed to run MRP');
+    }
+  };
+
+  // Generate PR from MRP
+  const handleGeneratePRFromMRP = async (mrpRunId: string) => {
+    try {
+      const prId = await manufacturingService.mrpService.generatePR(mrpRunId);
+      toast.success('Purchase Requisition generated from MRP');
+      return prId;
+    } catch (error) {
+      console.error('Error generating PR from MRP:', error);
+      toast.error('Failed to generate PR');
+    }
+  };
+
+  // Create Production Order from mBOM
+  const handleCreateProductionOrder = async (mbomId: string, quantity: number, scheduledStart: string) => {
+    try {
+      const poId = await manufacturingService.productionOrderService.createFromMBOM(
+        mbomId, 
+        quantity, 
+        scheduledStart
+      );
+      toast.success('Production Order created');
+      return poId;
+    } catch (error) {
+      console.error('Error creating Production Order:', error);
+      toast.error('Failed to create Production Order');
+    }
+  };
+
+  // Release Production Order
+  const handleReleaseProductionOrder = async (productionOrderId: string) => {
+    try {
+      await manufacturingService.productionOrderService.release(productionOrderId);
+      toast.success('Production Order released');
+    } catch (error) {
+      console.error('Error releasing Production Order:', error);
+      toast.error('Failed to release Production Order');
+    }
+  };
+
+  // Issue material to Production Order
+  const handleIssueMaterial = async (
+    productionOrderId: string, 
+    materialId: string, 
+    issuedQty: number
+  ) => {
+    try {
+      await manufacturingService.productionOrderService.issueMaterial(
+        productionOrderId,
+        materialId,
+        issuedQty,
+        user?.displayName || user?.email || 'System'
+      );
+      toast.success('Material issued successfully');
+    } catch (error) {
+      console.error('Error issuing material:', error);
+      toast.error('Failed to issue material');
+    }
+  };
+
+  // Handle Over-BOM request
+  const handleOverBOMRequest = async (
+    productionOrderId: string,
+    materialId: string,
+    plannedQty: number,
+    requestedQty: number,
+    reason: string
+  ) => {
+    try {
+      const requestId = await manufacturingService.overBOMService.createRequest(
+        productionOrderId,
+        materialId,
+        plannedQty,
+        requestedQty,
+        reason,
+        user?.displayName || user?.email || 'System'
+      );
+      toast.success('Over-BOM request submitted for approval');
+      return requestId;
+    } catch (error) {
+      console.error('Error creating Over-BOM request:', error);
+      toast.error('Failed to submit Over-BOM request');
+    }
+  };
+
+  // Approve/Reject variance
+  const handleVarianceDecision = async (
+    varianceId: string, 
+    decision: 'approved' | 'rejected',
+    comments: string
+  ) => {
+    try {
+      await manufacturingService.varianceService.resolveVariance(
+        varianceId,
+        decision,
+        user?.displayName || user?.email || 'System',
+        comments
+      );
+      toast.success(`Variance ${decision}`);
+    } catch (error) {
+      console.error('Error resolving variance:', error);
+      toast.error('Failed to resolve variance');
+    }
+  };
+
+  // Get manufacturing document display info
+  const getManufacturingDocIcon = (type: string) => {
+    switch (type) {
+      case 'ebom': return <Layers className="w-4 h-4" />;
+      case 'mbom': return <Workflow className="w-4 h-4" />;
+      case 'mrp': return <Calculator className="w-4 h-4" />;
+      case 'production-order': return <Factory className="w-4 h-4" />;
+      default: return <FileText className="w-4 h-4" />;
+    }
   };
 
   // ==========================================
