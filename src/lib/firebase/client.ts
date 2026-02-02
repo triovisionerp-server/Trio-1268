@@ -1,7 +1,7 @@
 // Import the functions you need from the SDKs you need
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
-import { initializeFirestore } from "firebase/firestore";
+import { getFirestore, initializeFirestore } from "firebase/firestore";
 import { getDatabase } from 'firebase/database';
 
 // Your web app's Firebase configuration
@@ -20,10 +20,19 @@ const firebaseConfig = {
 // Initialize app only once
 const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 
-// Force long polling - fixes offline/timeout issues
-export const db = initializeFirestore(app, {
-  experimentalForceLongPolling: true,
-});
+// Initialize Firestore - use getFirestore if already initialized, otherwise initialize with settings
+let db: ReturnType<typeof getFirestore>;
+try {
+  // Try to get existing Firestore instance
+  db = getFirestore(app);
+} catch {
+  // Initialize with long polling settings if not already initialized
+  db = initializeFirestore(app, {
+    experimentalForceLongPolling: true,
+  });
+}
+
+export { db };
 
 export const auth = getAuth(app);
 
