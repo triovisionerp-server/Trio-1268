@@ -483,30 +483,9 @@ export default function StorePage() {
               <Home className="w-4 h-4" />
               <span className="text-sm font-medium">Dashboard</span>
             </button>
-            <button
-              onClick={() => router.push('/purchase')}
-              className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 rounded-xl text-white transition-all shadow-lg shadow-blue-500/20"
-            >
-              <ShoppingCart className="w-4 h-4" />
-              <span className="text-sm font-medium">Purchase Hub</span>
-            </button>
-            <button
-              onClick={() => router.push('/empStore')}
-              className="flex items-center gap-2 px-4 py-2.5 bg-white/5 hover:bg-white/10 rounded-xl text-zinc-400 hover:text-white transition-all border border-white/5"
-            >
-              <FileCheck className="w-4 h-4" />
-              <span className="text-sm font-medium">Data Entry</span>
-            </button>
           </div>
           
           <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2 px-3 py-2 bg-emerald-500/10 rounded-xl border border-emerald-500/20">
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-              </span>
-              <span className="text-xs text-emerald-400 font-medium">Live Sync</span>
-            </div>
             <button
               onClick={() => {
                 localStorage.removeItem('currentUser');
