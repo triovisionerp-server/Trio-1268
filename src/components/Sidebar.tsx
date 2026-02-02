@@ -49,14 +49,14 @@ const ALL_MENU_ITEMS: MenuItem[] = [
   { name: 'Data Entry', path: '/empStore', icon: FileText, roles: ['store', 'store_manager', 'inventory', 'data_entry'] },
   
   // Purchase Team - their own dashboard
-  { name: 'Purchase', path: '/purchase', icon: ShoppingCart, roles: ['purchase', 'purchase_manager', 'purchase_team'] },
+  { name: 'Purchase', path: '/purchase', icon: ShoppingCart, roles: ['md', 'purchase', 'purchase_manager', 'purchase_team'] },
   
   // Manufacturing
   { name: 'Production', path: '/production', icon: Factory, roles: ['md', 'production', 'supervisor', 'manufacturing'] },
   { name: 'Tooling', path: '/tooling', icon: Cog, roles: ['tooling', 'tool_room'] },
   
-  // Finished Goods & Dispatch
-  { name: 'Finished Goods', path: '/fg-store', icon: PackageCheck, roles: ['md', 'fg_store', 'dispatch'] },
+  // Completed Goods & Dispatch
+  { name: 'Completed Products', path: '/fg-store', icon: PackageCheck, roles: ['md', 'fg_store', 'dispatch'] },
   { name: 'Dispatch', path: '/dispatch', icon: Truck, roles: ['md', 'dispatch', 'logistics'] },
   
   // HR & Admin
