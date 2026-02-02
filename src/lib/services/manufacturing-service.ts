@@ -9,7 +9,6 @@ import {
   collection,
   addDoc,
   updateDoc,
-  deleteDoc,
   doc,
   getDoc,
   getDocs,
@@ -17,8 +16,6 @@ import {
   where,
   orderBy,
   onSnapshot,
-  writeBatch,
-  Timestamp,
   limit,
 } from 'firebase/firestore';
 
@@ -30,17 +27,13 @@ import {
   ProductionOrder,
   MaterialVariance,
   OverBOMRequest,
-  ProjectCostSummary,
   eBOMItem,
   mBOMItem,
   RoutingOperation,
   ProductionOrderMaterial,
   ProductionOrderOperation,
   BOMStatus,
-  MRPStatus,
-  ProductionOrderStatus,
   EscalationLevel,
-  VarianceDecision,
   MANUFACTURING_COLLECTIONS,
   VARIANCE_THRESHOLDS,
   ESCALATION_TIMEOUT_HOURS,
@@ -342,7 +335,6 @@ export const mBOMService = {
    * Create mBOM from eBOM
    */
   async createFromEBOM(eBOM: EngineeringBOM): Promise<string> {
-    const user = getCurrentUser();
     const mBOMNumber = generateDocNumber('mBOM');
 
     // Convert eBOM items to mBOM items
@@ -1293,7 +1285,6 @@ export const varianceService = {
       reasonCategory?: string;
     }
   ): Promise<string> {
-    const user = getCurrentUser();
     const varianceNumber = generateDocNumber('VAR');
     
     const order = await productionOrderService.getById(productionOrderId);

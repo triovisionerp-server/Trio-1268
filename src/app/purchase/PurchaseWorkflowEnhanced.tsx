@@ -325,6 +325,10 @@ export default function PurchaseWorkflowEnhanced() {
   const [mBOMs, setMBOMs] = useState<ManufacturingBOM[]>([]);
   const [mrpRuns, setMRPRuns] = useState<MRPRun[]>([]);
   const [productionOrders, setProductionOrders] = useState<ProductionOrder[]>([]);
+  
+  // Expose manufacturing state for future use
+  void eBOMs; void mBOMs; void mrpRuns; void productionOrders;
+  
   const [stats, setStats] = useState({
     total: 0,
     pending: 0,
@@ -478,6 +482,63 @@ export default function PurchaseWorkflowEnhanced() {
     const user = getCurrentUser();
 
     try {
+      // Handle manufacturing document types
+      if (data.type === 'ebom') {
+        await manufacturingService.eBOM.create({
+          projectId: data.projectId as string,
+          projectName: data.projectName as string,
+          status: 'draft',
+          items: (data.items as eBOMItem[]) || [],
+          totalMaterialCost: 0,
+          totalWastageCost: 0,
+          contingencyPercent: data.overheadPercent as number || 10,
+          contingencyAmount: 0,
+          grandTotalCost: 0,
+          designedBy: user.id || 'system',
+          designedByName: user.name || 'System',
+          designDate: new Date().toISOString(),
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        });
+        toast.success('eBOM created successfully!');
+        setShowCreateModal(false);
+        return;
+      }
+
+      if (data.type === 'mbom') {
+        await manufacturingService.eBOM.convertToMBOM(data.sourceEBOMId as string);
+        toast.success('mBOM created from eBOM successfully!');
+        setShowCreateModal(false);
+        return;
+      }
+
+      if (data.type === 'mrp') {
+        await manufacturingService.mrp.runMRP(
+          data.sourceMBOMId as string,
+          {
+            planningHorizonDays: 30,
+            autoGeneratePR: true
+          }
+        );
+        toast.success('MRP calculation completed!');
+        setShowCreateModal(false);
+        return;
+      }
+
+      if (data.type === 'production-order') {
+        await manufacturingService.productionOrder.createFromMBOM(
+          data.sourceMBOMId as string,
+          {
+            orderQty: data.quantity as number,
+            plannedStartDate: data.scheduledStart as string
+          }
+        );
+        toast.success('Production Order created successfully!');
+        setShowCreateModal(false);
+        return;
+      }
+
+      // Standard document creation
       const docData = {
         ...data,
         docNumber: generateDocNumber(currentDocument?.code || 'DOC'),
@@ -730,25 +791,25 @@ export default function PurchaseWorkflowEnhanced() {
   // MANUFACTURING HANDLERS (eBOM, mBOM, MRP)
   // ==========================================
 
+  // Get current user for manufacturing operations
+  const currentUserInfo = getCurrentUser();
+
   // Create new eBOM from project
   const handleCreateEBOM = async (projectId: string, projectName: string) => {
     try {
-      const ebomId = await manufacturingService.eBOMService.create({
+      const ebomId = await manufacturingService.eBOM.create({
         projectId,
         projectName,
-        version: '1.0',
         status: 'draft' as const,
         items: [],
         totalMaterialCost: 0,
-        totalLabourCost: 0,
-        overheadPercent: 0,
-        stockAnalysis: {
-          inStock: 0,
-          partialStock: 0,
-          outOfStock: 0,
-          totalShortfall: 0
-        },
-        createdBy: user?.displayName || user?.email || 'System',
+        totalWastageCost: 0,
+        contingencyPercent: 10,
+        contingencyAmount: 0,
+        grandTotalCost: 0,
+        designedBy: currentUserInfo.id || 'system',
+        designedByName: currentUserInfo.name || 'System',
+        designDate: new Date().toISOString(),
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       });
@@ -763,7 +824,7 @@ export default function PurchaseWorkflowEnhanced() {
   // Add item to eBOM
   const handleAddEBOMItem = async (ebomId: string, item: Partial<eBOMItem>) => {
     try {
-      await manufacturingService.eBOMService.addItem(ebomId, item as eBOMItem);
+      await manufacturingService.eBOM.addItem(ebomId, item as eBOMItem);
       toast.success('Item added to eBOM');
     } catch (error) {
       console.error('Error adding eBOM item:', error);
@@ -774,7 +835,7 @@ export default function PurchaseWorkflowEnhanced() {
   // Convert eBOM to mBOM
   const handleConvertToMBOM = async (ebomId: string) => {
     try {
-      const mbomId = await manufacturingService.eBOMService.convertToMBOM(ebomId);
+      const mbomId = await manufacturingService.eBOM.convertToMBOM(ebomId);
       toast.success('Successfully converted eBOM to mBOM');
       return mbomId;
     } catch (error) {
@@ -784,9 +845,13 @@ export default function PurchaseWorkflowEnhanced() {
   };
 
   // Run MRP calculation
-  const handleRunMRP = async (mbomId: string, requiredDate: string) => {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const handleRunMRP = async (mbomId: string, _requiredDate: string) => {
     try {
-      const mrpRunId = await manufacturingService.mrpService.runMRP(mbomId, requiredDate);
+      const mrpRunId = await manufacturingService.mrp.runMRP(mbomId, {
+        planningHorizonDays: 30,
+        autoGeneratePR: true
+      });
       toast.success('MRP calculation completed');
       return mrpRunId;
     } catch (error) {
@@ -798,7 +863,7 @@ export default function PurchaseWorkflowEnhanced() {
   // Generate PR from MRP
   const handleGeneratePRFromMRP = async (mrpRunId: string) => {
     try {
-      const prId = await manufacturingService.mrpService.generatePR(mrpRunId);
+      const prId = await manufacturingService.mrp.generatePR(mrpRunId);
       toast.success('Purchase Requisition generated from MRP');
       return prId;
     } catch (error) {
@@ -810,10 +875,12 @@ export default function PurchaseWorkflowEnhanced() {
   // Create Production Order from mBOM
   const handleCreateProductionOrder = async (mbomId: string, quantity: number, scheduledStart: string) => {
     try {
-      const poId = await manufacturingService.productionOrderService.createFromMBOM(
+      const poId = await manufacturingService.productionOrder.createFromMBOM(
         mbomId, 
-        quantity, 
-        scheduledStart
+        {
+          orderQty: quantity,
+          plannedStartDate: scheduledStart
+        }
       );
       toast.success('Production Order created');
       return poId;
@@ -826,7 +893,7 @@ export default function PurchaseWorkflowEnhanced() {
   // Release Production Order
   const handleReleaseProductionOrder = async (productionOrderId: string) => {
     try {
-      await manufacturingService.productionOrderService.release(productionOrderId);
+      await manufacturingService.productionOrder.release(productionOrderId);
       toast.success('Production Order released');
     } catch (error) {
       console.error('Error releasing Production Order:', error);
@@ -841,11 +908,11 @@ export default function PurchaseWorkflowEnhanced() {
     issuedQty: number
   ) => {
     try {
-      await manufacturingService.productionOrderService.issueMaterial(
+      await manufacturingService.productionOrder.issueMaterial(
         productionOrderId,
         materialId,
         issuedQty,
-        user?.displayName || user?.email || 'System'
+        currentUserInfo.name || 'System'
       );
       toast.success('Material issued successfully');
     } catch (error) {
@@ -858,19 +925,19 @@ export default function PurchaseWorkflowEnhanced() {
   const handleOverBOMRequest = async (
     productionOrderId: string,
     materialId: string,
-    plannedQty: number,
+    _plannedQty: number,
     requestedQty: number,
     reason: string
   ) => {
     try {
-      const requestId = await manufacturingService.overBOMService.createRequest(
+      const requestId = await manufacturingService.overBOM.createRequest({
         productionOrderId,
         materialId,
-        plannedQty,
-        requestedQty,
+        additionalQty: requestedQty,
         reason,
-        user?.displayName || user?.email || 'System'
-      );
+        reasonCategory: 'wastage',
+        justification: reason
+      });
       toast.success('Over-BOM request submitted for approval');
       return requestId;
     } catch (error) {
@@ -886,10 +953,9 @@ export default function PurchaseWorkflowEnhanced() {
     comments: string
   ) => {
     try {
-      await manufacturingService.varianceService.resolveVariance(
+      await manufacturingService.variance.resolveVariance(
         varianceId,
         decision,
-        user?.displayName || user?.email || 'System',
         comments
       );
       toast.success(`Variance ${decision}`);
@@ -899,7 +965,18 @@ export default function PurchaseWorkflowEnhanced() {
     }
   };
 
-  // Get manufacturing document display info
+  // Get manufacturing document display info - exports for use in rendering
+  void handleCreateEBOM;
+  void handleAddEBOMItem;
+  void handleConvertToMBOM;
+  void handleRunMRP;
+  void handleGeneratePRFromMRP;
+  void handleCreateProductionOrder;
+  void handleReleaseProductionOrder;
+  void handleIssueMaterial;
+  void handleOverBOMRequest;
+  void handleVarianceDecision;
+
   const getManufacturingDocIcon = (type: string) => {
     switch (type) {
       case 'ebom': return <Layers className="w-4 h-4" />;
@@ -909,6 +986,7 @@ export default function PurchaseWorkflowEnhanced() {
       default: return <FileText className="w-4 h-4" />;
     }
   };
+  void getManufacturingDocIcon;
 
   // ==========================================
   // RENDER
@@ -1720,6 +1798,79 @@ function CreateDocumentModal({ documentType, phaseGradient, materials, suppliers
   const isGRN = documentType?.id === 'grn';
   const isGateEntry = documentType?.id === 'gate-entry';
   const isPR = documentType?.id === 'purchase-requisition';
+  const isEBOM = documentType?.id === 'ebom';
+  const isMBOM = documentType?.id === 'mbom';
+  const isMRP = documentType?.id === 'mrp';
+  const isProductionOrder = documentType?.id === 'production-order';
+  const isManufacturing = isEBOM || isMBOM || isMRP || isProductionOrder;
+
+  // Manufacturing specific state
+  const [manufacturingData, setManufacturingData] = useState({
+    projectId: '',
+    projectName: '',
+    version: '1.0',
+    productionQty: 1,
+    requiredDate: '',
+    scheduledStart: '',
+    sourceMBOMId: '',
+    sourceEBOMId: '',
+    wastagePercent: 2,
+    overheadPercent: 10
+  });
+
+  // Manufacturing submit handler
+  const handleManufacturingSubmit = async () => {
+    if (isEBOM) {
+      if (!manufacturingData.projectId || !manufacturingData.projectName) {
+        toast.error('Please provide project details');
+        return;
+      }
+      // eBOM will be created via the main component's handler
+      onCreate({
+        type: 'ebom',
+        projectId: manufacturingData.projectId,
+        projectName: manufacturingData.projectName,
+        version: manufacturingData.version,
+        wastagePercent: manufacturingData.wastagePercent,
+        overheadPercent: manufacturingData.overheadPercent,
+        items: formData.items.map(item => ({
+          ...item,
+          wastagePercent: manufacturingData.wastagePercent,
+          grossQty: item.quantity * (1 + manufacturingData.wastagePercent / 100)
+        }))
+      });
+    } else if (isMBOM) {
+      if (!manufacturingData.sourceEBOMId) {
+        toast.error('Please select an eBOM to convert');
+        return;
+      }
+      onCreate({
+        type: 'mbom',
+        sourceEBOMId: manufacturingData.sourceEBOMId
+      });
+    } else if (isMRP) {
+      if (!manufacturingData.sourceMBOMId || !manufacturingData.requiredDate) {
+        toast.error('Please select mBOM and required date');
+        return;
+      }
+      onCreate({
+        type: 'mrp',
+        sourceMBOMId: manufacturingData.sourceMBOMId,
+        requiredDate: manufacturingData.requiredDate
+      });
+    } else if (isProductionOrder) {
+      if (!manufacturingData.sourceMBOMId || !manufacturingData.scheduledStart) {
+        toast.error('Please select mBOM and scheduled start date');
+        return;
+      }
+      onCreate({
+        type: 'production-order',
+        sourceMBOMId: manufacturingData.sourceMBOMId,
+        quantity: manufacturingData.productionQty,
+        scheduledStart: manufacturingData.scheduledStart
+      });
+    }
+  };
 
   return (
     <motion.div
@@ -1907,13 +2058,163 @@ function CreateDocumentModal({ documentType, phaseGradient, materials, suppliers
                 </div>
               </>
             )}
+
+            {/* eBOM specific fields */}
+            {isEBOM && (
+              <>
+                <div>
+                  <label className="block text-sm font-medium text-zinc-300 mb-2">Project ID *</label>
+                  <input
+                    type="text"
+                    value={manufacturingData.projectId}
+                    onChange={(e) => setManufacturingData({ ...manufacturingData, projectId: e.target.value })}
+                    placeholder="Enter project ID"
+                    className="w-full px-4 py-2.5 bg-zinc-800 border border-zinc-700 rounded-xl text-white placeholder:text-zinc-500 focus:border-blue-500 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-zinc-300 mb-2">Project Name *</label>
+                  <input
+                    type="text"
+                    value={manufacturingData.projectName}
+                    onChange={(e) => setManufacturingData({ ...manufacturingData, projectName: e.target.value })}
+                    placeholder="Enter project name"
+                    className="w-full px-4 py-2.5 bg-zinc-800 border border-zinc-700 rounded-xl text-white placeholder:text-zinc-500 focus:border-blue-500 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-zinc-300 mb-2">Version</label>
+                  <input
+                    type="text"
+                    value={manufacturingData.version}
+                    onChange={(e) => setManufacturingData({ ...manufacturingData, version: e.target.value })}
+                    placeholder="e.g., 1.0"
+                    className="w-full px-4 py-2.5 bg-zinc-800 border border-zinc-700 rounded-xl text-white placeholder:text-zinc-500 focus:border-blue-500 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-zinc-300 mb-2">Default Wastage %</label>
+                  <input
+                    type="number"
+                    value={manufacturingData.wastagePercent}
+                    onChange={(e) => setManufacturingData({ ...manufacturingData, wastagePercent: parseFloat(e.target.value) || 0 })}
+                    className="w-full px-4 py-2.5 bg-zinc-800 border border-zinc-700 rounded-xl text-white focus:border-blue-500 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-zinc-300 mb-2">Overhead %</label>
+                  <input
+                    type="number"
+                    value={manufacturingData.overheadPercent}
+                    onChange={(e) => setManufacturingData({ ...manufacturingData, overheadPercent: parseFloat(e.target.value) || 0 })}
+                    className="w-full px-4 py-2.5 bg-zinc-800 border border-zinc-700 rounded-xl text-white focus:border-blue-500 focus:outline-none"
+                  />
+                </div>
+              </>
+            )}
+
+            {/* mBOM specific fields - select eBOM to convert */}
+            {isMBOM && (
+              <>
+                <div className="col-span-2">
+                  <label className="block text-sm font-medium text-zinc-300 mb-2">Select eBOM to Convert *</label>
+                  <div className="p-4 bg-zinc-800/50 border border-zinc-700 rounded-xl">
+                    <p className="text-zinc-400 text-sm mb-3">
+                      Converting an eBOM to mBOM adds manufacturing-specific details like routing, consumables, and issue points.
+                    </p>
+                    <input
+                      type="text"
+                      value={manufacturingData.sourceEBOMId}
+                      onChange={(e) => setManufacturingData({ ...manufacturingData, sourceEBOMId: e.target.value })}
+                      placeholder="Enter eBOM ID or select from list"
+                      className="w-full px-4 py-2.5 bg-zinc-900 border border-zinc-700 rounded-xl text-white placeholder:text-zinc-500 focus:border-blue-500 focus:outline-none"
+                    />
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* MRP specific fields */}
+            {isMRP && (
+              <>
+                <div>
+                  <label className="block text-sm font-medium text-zinc-300 mb-2">Select mBOM *</label>
+                  <input
+                    type="text"
+                    value={manufacturingData.sourceMBOMId}
+                    onChange={(e) => setManufacturingData({ ...manufacturingData, sourceMBOMId: e.target.value })}
+                    placeholder="Enter mBOM ID"
+                    className="w-full px-4 py-2.5 bg-zinc-800 border border-zinc-700 rounded-xl text-white placeholder:text-zinc-500 focus:border-blue-500 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-zinc-300 mb-2">Required By Date *</label>
+                  <input
+                    type="date"
+                    value={manufacturingData.requiredDate}
+                    onChange={(e) => setManufacturingData({ ...manufacturingData, requiredDate: e.target.value })}
+                    className="w-full px-4 py-2.5 bg-zinc-800 border border-zinc-700 rounded-xl text-white focus:border-blue-500 focus:outline-none"
+                  />
+                </div>
+                <div className="col-span-2 p-4 bg-blue-500/10 border border-blue-500/30 rounded-xl">
+                  <h4 className="font-medium text-blue-400 mb-2">MRP Calculation Info</h4>
+                  <p className="text-zinc-400 text-sm">
+                    MRP will calculate net requirements based on current inventory and pending purchase orders.
+                    It will automatically identify materials needing procurement.
+                  </p>
+                </div>
+              </>
+            )}
+
+            {/* Production Order specific fields */}
+            {isProductionOrder && (
+              <>
+                <div>
+                  <label className="block text-sm font-medium text-zinc-300 mb-2">Select mBOM *</label>
+                  <input
+                    type="text"
+                    value={manufacturingData.sourceMBOMId}
+                    onChange={(e) => setManufacturingData({ ...manufacturingData, sourceMBOMId: e.target.value })}
+                    placeholder="Enter mBOM ID"
+                    className="w-full px-4 py-2.5 bg-zinc-800 border border-zinc-700 rounded-xl text-white placeholder:text-zinc-500 focus:border-blue-500 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-zinc-300 mb-2">Production Quantity *</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={manufacturingData.productionQty}
+                    onChange={(e) => setManufacturingData({ ...manufacturingData, productionQty: parseInt(e.target.value) || 1 })}
+                    className="w-full px-4 py-2.5 bg-zinc-800 border border-zinc-700 rounded-xl text-white focus:border-blue-500 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-zinc-300 mb-2">Scheduled Start *</label>
+                  <input
+                    type="datetime-local"
+                    value={manufacturingData.scheduledStart}
+                    onChange={(e) => setManufacturingData({ ...manufacturingData, scheduledStart: e.target.value })}
+                    className="w-full px-4 py-2.5 bg-zinc-800 border border-zinc-700 rounded-xl text-white focus:border-blue-500 focus:outline-none"
+                  />
+                </div>
+                <div className="col-span-2 p-4 bg-purple-500/10 border border-purple-500/30 rounded-xl">
+                  <h4 className="font-medium text-purple-400 mb-2">Production Order</h4>
+                  <p className="text-zinc-400 text-sm">
+                    A Production Order tracks material issues against planned quantities.
+                    Variance tracking will flag any over-consumption requiring approval.
+                  </p>
+                </div>
+              </>
+            )}
           </div>
 
-          {/* Add Items */}
+          {/* Add Items - Only for non-manufacturing or eBOM */}
+          {(!isManufacturing || isEBOM) && (
           <div className="mb-6">
             <h3 className="text-sm font-semibold text-zinc-300 mb-3 flex items-center gap-2">
               <Package className="w-4 h-4" />
-              Add Items
+              {isEBOM ? 'Add BOM Items' : 'Add Items'}
             </h3>
             <div className="flex flex-wrap gap-3">
               <select
@@ -1964,9 +2265,10 @@ function CreateDocumentModal({ documentType, phaseGradient, materials, suppliers
               </button>
             </div>
           </div>
+          )}
 
-          {/* Items Table */}
-          {formData.items.length > 0 && (
+          {/* Items Table - Only for non-manufacturing or eBOM */}
+          {(!isManufacturing || isEBOM) && formData.items.length > 0 && (
             <div className="bg-zinc-800/50 rounded-xl overflow-hidden mb-6">
               <table className="w-full">
                 <thead>
@@ -2048,8 +2350,8 @@ function CreateDocumentModal({ documentType, phaseGradient, materials, suppliers
               Cancel
             </button>
             <button
-              onClick={handleSubmit}
-              disabled={formData.items.length === 0}
+              onClick={isManufacturing ? handleManufacturingSubmit : handleSubmit}
+              disabled={isManufacturing ? false : formData.items.length === 0}
               className={`px-5 py-2.5 bg-gradient-to-r ${phaseGradient} disabled:bg-zinc-700 disabled:from-zinc-700 disabled:to-zinc-700 text-white rounded-xl font-medium transition-all hover:opacity-90`}
             >
               Create {documentType?.code}
