@@ -225,7 +225,7 @@ export default function MDPurchaseApproval() {
         <div>
           <h2 className="text-xl font-bold text-white">Purchase Order Approvals</h2>
           <p className="text-zinc-500 text-sm">
-            Orders above {formatCurrency(MD_APPROVAL_THRESHOLD)} require your approval
+            All Purchase Orders require your approval
           </p>
         </div>
       </div>

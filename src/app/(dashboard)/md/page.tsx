@@ -1403,7 +1403,7 @@ export default function MDDashboard() {
                     <div>
                       <p className="text-sm font-medium text-amber-400">MD Approval Required</p>
                       <p className="text-xs text-zinc-400 mt-0.5">
-                        This order exceeds the auto-approval threshold of ₹{MD_APPROVAL_THRESHOLD.toLocaleString('en-IN')}
+                        All Purchase Orders require MD approval before processing
                       </p>
                     </div>
                   </div>

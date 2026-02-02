@@ -368,7 +368,7 @@ export const createPOFromEnquiry = async (
   const subtotal = selectedQuote.totalAmount;
   const gstAmount = subtotal * 0.18;
   const totalAmount = subtotal + gstAmount;
-  const requiresMDApproval = totalAmount >= MD_APPROVAL_THRESHOLD;
+  const requiresMDApproval = true; // All POs require MD approval
   
   const vendorDetails = {
     id: selectedQuote.supplierId,

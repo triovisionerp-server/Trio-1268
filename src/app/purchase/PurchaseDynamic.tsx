@@ -509,18 +509,19 @@ export default function PurchaseDynamic() {
         taxAmount,
         otherCharges: 0,
         totalAmount,
-        status: totalAmount >= MD_APPROVAL_THRESHOLD ? 'pending_md_approval' : 'approved',
+        status: 'pending_md_approval', // All POs require MD approval
         approvalSteps: [],
         paymentTerms: supplierData.paymentTerms,
         deliveryTerms: supplierData.terms,
         expectedDelivery: supplierData.deliveryDate,
         createdBy: currentUser.id,
         createdByName: currentUser.name,
-        requiresMDApproval: totalAmount >= MD_APPROVAL_THRESHOLD,
-        mdApprovalThreshold: MD_APPROVAL_THRESHOLD,
+        requiresMDApproval: true, // All POs require MD approval
+        mdApprovalThreshold: 0, // No threshold - all POs need approval
       });
       
-      if (totalAmount >= MD_APPROVAL_THRESHOLD) {
+      // All POs require MD approval
+      {
         // Show confirmation with option to notify MD
         const notifyMD = window.confirm(
           `✅ PO created successfully!\n\n` +
@@ -539,8 +540,6 @@ export default function PurchaseDynamic() {
             `https://trio-1268.vercel.app/md`;
           window.open(`https://wa.me/917981085020?text=${encodeURIComponent(message)}`, '_blank');
         }
-      } else {
-        alert('PO created and approved successfully!');
       }
       setShowCreatePOModal(false);
     } catch (error) {
@@ -601,19 +600,20 @@ export default function PurchaseDynamic() {
         taxAmount,
         otherCharges: 0,
         totalAmount,
-        status: totalAmount >= MD_APPROVAL_THRESHOLD ? 'pending_md_approval' : 'approved',
+        status: 'pending_md_approval', // All POs require MD approval
         approvalSteps: [],
         paymentTerms: data.paymentTerms,
         deliveryTerms: data.deliveryTerms,
         expectedDelivery: data.expectedDelivery,
         createdBy: currentUser.id,
         createdByName: currentUser.name,
-        requiresMDApproval: totalAmount >= MD_APPROVAL_THRESHOLD,
-        mdApprovalThreshold: MD_APPROVAL_THRESHOLD,
+        requiresMDApproval: true, // All POs require MD approval
+        mdApprovalThreshold: 0, // No threshold - all POs need approval
         notes: data.notes,
       });
       
-      if (totalAmount >= MD_APPROVAL_THRESHOLD) {
+      // All POs require MD approval
+      {
         const notifyMD = window.confirm(
           `✅ PO created successfully!\n\n` +
           `Amount: ${formatCurrency(totalAmount)}\n` +
@@ -630,8 +630,6 @@ export default function PurchaseDynamic() {
             `Please review at:\nhttps://trio-1268.vercel.app/md`;
           window.open(`https://wa.me/917981085020?text=${encodeURIComponent(message)}`, '_blank');
         }
-      } else {
-        alert('✅ PO created and auto-approved!');
       }
       setShowDirectPOModal(false);
     } catch (error) {
@@ -851,7 +849,7 @@ export default function PurchaseDynamic() {
                 {dashboardStats?.purchaseOrders.pendingApproval || 0}
               </p>
               <p className="text-xs text-zinc-500 mt-1">
-                Above {formatCurrency(MD_APPROVAL_THRESHOLD)}
+                All POs require approval
               </p>
             </div>
             <div className="w-12 h-12 bg-red-500/20 rounded-xl flex items-center justify-center">
@@ -3312,11 +3310,9 @@ function CreatePOForm({
           <span className="font-medium text-white">Total Amount</span>
           <span className="font-bold text-green-400">{formatCurrency(totalAmount)}</span>
         </div>
-        {totalAmount >= MD_APPROVAL_THRESHOLD && (
-          <div className="mt-3 p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg">
-            <p className="text-xs text-amber-400">⚠️ This PO exceeds {formatCurrency(MD_APPROVAL_THRESHOLD)} and will require MD approval</p>
-          </div>
-        )}
+        <div className="mt-3 p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg">
+          <p className="text-xs text-amber-400">⚠️ All POs require MD approval before processing</p>
+        </div>
       </div>
       
       {/* Supplier Selection */}

@@ -650,9 +650,9 @@ export const createPO = async (
 ): Promise<string> => {
   const poNumber = generateDocNumber('PO');
   
-  // Check if MD approval needed
-  const requiresMDApproval = data.totalAmount >= MD_APPROVAL_THRESHOLD;
-  const status: POStatus = requiresMDApproval ? 'pending_md_approval' : 'approved';
+  // All POs require MD approval - no threshold
+  const requiresMDApproval = true;
+  const status: POStatus = 'pending_md_approval';
   
   const poItems = data.items.map(item => ({
     ...item,
@@ -666,10 +666,10 @@ export const createPO = async (
     items: poItems,
     status,
     requiresMDApproval,
-    mdApprovalThreshold: MD_APPROVAL_THRESHOLD,
-    approvalSteps: requiresMDApproval ? [
+    mdApprovalThreshold: 0, // No threshold - all POs require approval
+    approvalSteps: [
       { step: 1, approverRole: 'MD', status: 'pending' }
-    ] : [],
+    ],
     receivedItems: [],
     totalReceivedQty: 0,
     createdAt: new Date().toISOString(),
