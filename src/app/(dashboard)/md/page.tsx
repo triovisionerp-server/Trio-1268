@@ -168,6 +168,31 @@ const ACTIVITIES = [
 type ModalType = "shed1" | "shed2" | null;
 type ViewType = "dashboard" | "approvals";
 
+// Helper function to get greeting based on time
+const getGreeting = (hour: number): { greeting: string; emoji: string } => {
+  if (hour >= 5 && hour < 12) return { greeting: "Good Morning", emoji: "☀️" };
+  if (hour >= 12 && hour < 17) return { greeting: "Good Afternoon", emoji: "🌤️" };
+  if (hour >= 17 && hour < 21) return { greeting: "Good Evening", emoji: "🌅" };
+  return { greeting: "Good Night", emoji: "🌙" };
+};
+
+// Helper to get user from localStorage
+const getCurrentUserName = (): string => {
+  if (typeof window === 'undefined') return 'Director';
+  const stored = localStorage.getItem('currentUser');
+  if (stored) {
+    try {
+      const user = JSON.parse(stored);
+      // Extract first name from displayName
+      const fullName = user.displayName || user.name || 'Director';
+      return fullName.split(' ')[0]; // Return first name only
+    } catch {
+      return 'Director';
+    }
+  }
+  return 'Director';
+};
+
 export default function MDDashboard() {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [activeModal, setActiveModal] = useState<ModalType>(null);
@@ -176,6 +201,7 @@ export default function MDDashboard() {
   const [pendingOrders, setPendingOrders] = useState<PurchaseOrder[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<PurchaseOrder | null>(null);
   const [showOrderDetails, setShowOrderDetails] = useState(false);
+  const [userName, setUserName] = useState('Director');
   
   // Inventory Overview States
   const [showInventoryPanel, setShowInventoryPanel] = useState(false);
@@ -197,6 +223,11 @@ export default function MDDashboard() {
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
+  }, []);
+
+  // Get user name on mount
+  useEffect(() => {
+    setUserName(getCurrentUserName());
   }, []);
 
   // Fetch ALL purchase orders from Firebase (for overview)
@@ -328,6 +359,9 @@ export default function MDDashboard() {
     hour: '2-digit', minute: '2-digit', second: '2-digit' 
   });
 
+  // Get personalized greeting
+  const { greeting, emoji } = getGreeting(currentTime.getHours());
+
   // Calculations
   const totalEmployees = ALL_DEPARTMENTS.reduce((sum, d) => sum + d.employees, 0);
   const activeEmployees = ALL_DEPARTMENTS.reduce((sum, d) => sum + d.active, 0);
@@ -359,41 +393,69 @@ export default function MDDashboard() {
         animate="visible"
         variants={staggerContainer}
       >
-        {/* ════════════════════ HEADER ════════════════════ */}
-        <motion.header variants={fadeInUp} className="flex items-center justify-between mb-8">
-          <div>
-            <motion.h1 
-              className="text-4xl font-extralight text-white tracking-tight"
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.8 }}
-            >
-              MD Dashboard
-            </motion.h1>
-            <motion.p 
-              className="text-zinc-500 mt-1 flex items-center gap-3"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.4 }}
-            >
-              <span>{today}</span>
-              <span className="text-zinc-700">•</span>
-              <span className="font-mono text-cyan-400">{timeString}</span>
-            </motion.p>
-          </div>
+        {/* ════════════════════ PERSONALIZED HEADER - NOTION STYLE ════════════════════ */}
+        <motion.header variants={fadeInUp} className="mb-8">
+          {/* Notion-style Greeting Section */}
+          <div className="flex items-start justify-between">
+            <div className="flex-1">
+              {/* Big Emoji + Greeting */}
+              <motion.div
+                className="flex items-center gap-4 mb-3"
+                initial={{ opacity: 0, y: -20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6 }}
+              >
+                <span className="text-5xl">{emoji}</span>
+                <div>
+                  <h1 className="text-4xl font-light text-white">
+                    {greeting}, <span className="font-semibold bg-gradient-to-r from-cyan-400 to-purple-400 bg-clip-text text-transparent">{userName}</span>
+                  </h1>
+                  <p className="text-zinc-500 mt-1 flex items-center gap-3">
+                    <span>{today}</span>
+                    <span className="text-zinc-700">•</span>
+                    <span className="font-mono text-cyan-400">{timeString}</span>
+                  </p>
+                </div>
+              </motion.div>
 
-
+              {/* Today's Quick Stats Strip */}
+              <motion.div 
+                className="flex items-center gap-6 mt-4"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.3 }}
+              >
+                <div className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-amber-500/10 to-orange-500/10 rounded-xl border border-amber-500/20">
+                  <FileText className="w-4 h-4 text-amber-400" />
+                  <span className="text-sm text-zinc-300">
+                    <span className="font-bold text-amber-400">{pendingOrders.length}</span> POs awaiting approval
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-emerald-500/10 to-green-500/10 rounded-xl border border-emerald-500/20">
+                  <Factory className="w-4 h-4 text-emerald-400" />
+                  <span className="text-sm text-zinc-300">
+                    <span className="font-bold text-emerald-400">{runningDepts}</span>/{ALL_DEPARTMENTS.length} departments running
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-500/10 to-cyan-500/10 rounded-xl border border-blue-500/20">
+                  <Users className="w-4 h-4 text-blue-400" />
+                  <span className="text-sm text-zinc-300">
+                    <span className="font-bold text-blue-400">{activeEmployees}</span> employees active
+                  </span>
+                </div>
+              </motion.div>
+            </div>
           
-          <motion.div 
-            className="flex items-center gap-4 relative"
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-          >
-            {/* Inventory Overview Button */}
-            <motion.button
-              onClick={() => setShowInventoryPanel(!showInventoryPanel)}
-              className={`relative flex items-center gap-2 px-4 py-2.5 rounded-2xl transition-all duration-300 ${
-                showInventoryPanel 
+            <motion.div 
+              className="flex items-center gap-4 relative"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+            >
+              {/* Inventory Overview Button */}
+              <motion.button
+                onClick={() => setShowInventoryPanel(!showInventoryPanel)}
+                className={`relative flex items-center gap-2 px-4 py-2.5 rounded-2xl transition-all duration-300 ${
+                  showInventoryPanel 
                   ? 'bg-emerald-500/20 border border-emerald-500/40' 
                   : 'bg-white/5 border border-white/10 hover:border-white/20'
               }`}
@@ -661,6 +723,7 @@ export default function MDDashboard() {
               )}
             </AnimatePresence>
           </motion.div>
+          </div>
         </motion.header>
 
         {/* ════════════════════ VIEW TABS ════════════════════ */}
@@ -718,6 +781,186 @@ export default function MDDashboard() {
               exit={{ opacity: 0, y: -20 }}
               transition={{ duration: 0.3 }}
             >
+
+        {/* ════════════════════ NOTION-STYLE TODAY'S OVERVIEW ════════════════════ */}
+        <motion.div 
+          variants={fadeInUp}
+          className="mb-8 grid grid-cols-1 lg:grid-cols-3 gap-6"
+        >
+          {/* Today's Priority Tasks */}
+          <motion.div 
+            className="lg:col-span-2 bg-gradient-to-br from-zinc-900/80 to-zinc-900/40 border border-white/10 rounded-3xl p-6 backdrop-blur-xl"
+            whileHover={{ borderColor: 'rgba(255,255,255,0.15)' }}
+          >
+            <div className="flex items-center justify-between mb-5">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl flex items-center justify-center">
+                  <CheckCircle className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-white">Today&apos;s Priority Tasks</h3>
+                  <p className="text-xs text-zinc-500">What needs your attention today</p>
+                </div>
+              </div>
+              <span className="text-xs text-zinc-500 font-mono">{currentTime.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</span>
+            </div>
+            
+            <div className="space-y-3">
+              {/* Task 1 - PO Approvals */}
+              {pendingOrders.length > 0 && (
+                <motion.div 
+                  className="flex items-center gap-4 p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 cursor-pointer hover:bg-amber-500/15 transition-colors"
+                  whileHover={{ x: 4 }}
+                  onClick={() => setActiveView('approvals')}
+                >
+                  <div className="w-6 h-6 rounded-lg border-2 border-amber-500 flex items-center justify-center flex-shrink-0">
+                    <Clock className="w-3 h-3 text-amber-400" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-white">Review & Approve Purchase Orders</p>
+                    <p className="text-xs text-zinc-400">{pendingOrders.length} PO{pendingOrders.length > 1 ? 's' : ''} pending • Total: ₹{pendingOrders.reduce((sum, po) => sum + (po.totalAmount || 0), 0).toLocaleString('en-IN')}</p>
+                  </div>
+                  <span className="px-3 py-1 bg-amber-500/20 text-amber-400 text-xs font-medium rounded-full">Urgent</span>
+                </motion.div>
+              )}
+              
+              {/* Task 2 - Low Stock Alert */}
+              {inventoryMaterials.filter(m => (m.current_stock || 0) <= (m.min_stock || 0)).length > 0 && (
+                <motion.div 
+                  className="flex items-center gap-4 p-4 rounded-2xl bg-red-500/10 border border-red-500/20 cursor-pointer hover:bg-red-500/15 transition-colors"
+                  whileHover={{ x: 4 }}
+                  onClick={() => setShowInventoryPanel(true)}
+                >
+                  <div className="w-6 h-6 rounded-lg border-2 border-red-500 flex items-center justify-center flex-shrink-0">
+                    <AlertTriangle className="w-3 h-3 text-red-400" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-white">Critical Stock Levels</p>
+                    <p className="text-xs text-zinc-400">{inventoryMaterials.filter(m => (m.current_stock || 0) <= (m.min_stock || 0)).length} items need immediate attention</p>
+                  </div>
+                  <span className="px-3 py-1 bg-red-500/20 text-red-400 text-xs font-medium rounded-full">Critical</span>
+                </motion.div>
+              )}
+              
+              {/* Task 3 - Production Review */}
+              <motion.div 
+                className="flex items-center gap-4 p-4 rounded-2xl bg-white/[0.03] border border-white/10 cursor-pointer hover:bg-white/[0.05] transition-colors"
+                whileHover={{ x: 4 }}
+              >
+                <div className="w-6 h-6 rounded-lg border-2 border-emerald-500 flex items-center justify-center flex-shrink-0">
+                  <Factory className="w-3 h-3 text-emerald-400" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-white">Review Production Status</p>
+                  <p className="text-xs text-zinc-400">{avgEfficiency}% avg efficiency across {runningDepts} running departments</p>
+                </div>
+                <span className="px-3 py-1 bg-emerald-500/20 text-emerald-400 text-xs font-medium rounded-full">In Progress</span>
+              </motion.div>
+              
+              {/* Task 4 - Weekly Reports */}
+              <motion.div 
+                className="flex items-center gap-4 p-4 rounded-2xl bg-white/[0.03] border border-white/10 cursor-pointer hover:bg-white/[0.05] transition-colors"
+                whileHover={{ x: 4 }}
+              >
+                <div className="w-6 h-6 rounded-lg border-2 border-blue-500 flex items-center justify-center flex-shrink-0">
+                  <BarChart3 className="w-3 h-3 text-blue-400" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-white">Weekly Performance Analysis</p>
+                  <p className="text-xs text-zinc-400">Review OEE: {overallOEE}% • Prepare for Monday sync</p>
+                </div>
+                <span className="px-3 py-1 bg-blue-500/20 text-blue-400 text-xs font-medium rounded-full">Scheduled</span>
+              </motion.div>
+              
+              {/* All caught up message */}
+              {pendingOrders.length === 0 && inventoryMaterials.filter(m => (m.current_stock || 0) <= (m.min_stock || 0)).length === 0 && (
+                <motion.div 
+                  className="flex items-center gap-4 p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/20"
+                  initial={{ scale: 0.95 }}
+                  animate={{ scale: 1 }}
+                >
+                  <div className="w-10 h-10 rounded-full bg-emerald-500/20 flex items-center justify-center">
+                    <CheckCircle className="w-5 h-5 text-emerald-400" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-emerald-400">All caught up! 🎉</p>
+                    <p className="text-xs text-zinc-400">No urgent tasks pending approval</p>
+                  </div>
+                </motion.div>
+              )}
+            </div>
+          </motion.div>
+
+          {/* Quick Actions - Notion Style */}
+          <motion.div 
+            className="bg-gradient-to-br from-zinc-900/80 to-zinc-900/40 border border-white/10 rounded-3xl p-6 backdrop-blur-xl"
+            whileHover={{ borderColor: 'rgba(255,255,255,0.15)' }}
+          >
+            <div className="flex items-center gap-3 mb-5">
+              <div className="w-10 h-10 bg-gradient-to-br from-cyan-500 to-blue-500 rounded-xl flex items-center justify-center">
+                <Cog className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-white">Quick Actions</h3>
+                <p className="text-xs text-zinc-500">Frequently used shortcuts</p>
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-3">
+              <motion.button
+                onClick={() => setActiveView('approvals')}
+                className="flex flex-col items-center gap-2 p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 hover:bg-amber-500/20 transition-colors"
+                whileHover={{ scale: 1.03 }}
+                whileTap={{ scale: 0.97 }}
+              >
+                <FileText className="w-6 h-6 text-amber-400" />
+                <span className="text-xs text-zinc-300">Approvals</span>
+                {pendingOrders.length > 0 && (
+                  <span className="px-2 py-0.5 bg-amber-500 text-white text-[10px] font-bold rounded-full">{pendingOrders.length}</span>
+                )}
+              </motion.button>
+              
+              <motion.button
+                onClick={() => setShowInventoryPanel(true)}
+                className="flex flex-col items-center gap-2 p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 hover:bg-emerald-500/20 transition-colors"
+                whileHover={{ scale: 1.03 }}
+                whileTap={{ scale: 0.97 }}
+              >
+                <Boxes className="w-6 h-6 text-emerald-400" />
+                <span className="text-xs text-zinc-300">Inventory</span>
+              </motion.button>
+              
+              <Link href="/md/tooling">
+                <motion.div
+                  className="flex flex-col items-center gap-2 p-4 rounded-xl bg-purple-500/10 border border-purple-500/20 hover:bg-purple-500/20 transition-colors"
+                  whileHover={{ scale: 1.03 }}
+                  whileTap={{ scale: 0.97 }}
+                >
+                  <Cog className="w-6 h-6 text-purple-400" />
+                  <span className="text-xs text-zinc-300">Tooling</span>
+                </motion.div>
+              </Link>
+              
+              <Link href="/md/analytics">
+                <motion.div
+                  className="flex flex-col items-center gap-2 p-4 rounded-xl bg-blue-500/10 border border-blue-500/20 hover:bg-blue-500/20 transition-colors"
+                  whileHover={{ scale: 1.03 }}
+                  whileTap={{ scale: 0.97 }}
+                >
+                  <TrendingUp className="w-6 h-6 text-blue-400" />
+                  <span className="text-xs text-zinc-300">Analytics</span>
+                </motion.div>
+              </Link>
+            </div>
+            
+            {/* Today's Quote */}
+            <div className="mt-5 p-4 rounded-xl bg-gradient-to-br from-indigo-500/10 to-purple-500/10 border border-indigo-500/20">
+              <p className="text-sm italic text-zinc-300">&quot;Excellence is not a destination but a continuous journey.&quot;</p>
+              <p className="text-xs text-zinc-500 mt-2">— Triovision Vision</p>
+            </div>
+          </motion.div>
+        </motion.div>
+
         {/* ════════════════════ MAIN CONTENT ════════════════════ */}
         {/* ════════════════════ KPI CARDS ════════════════════ */}
         <motion.div variants={staggerContainer} className="grid grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-5 mb-8">

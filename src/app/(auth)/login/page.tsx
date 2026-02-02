@@ -13,7 +13,11 @@ const COMPANY_DOMAIN = '@triovisioninternational.com';
 
 // Fallback hardcoded users (only used if Firebase is unavailable)
 const FALLBACK_USERS: Record<string, { password: string; role: string; name: string }> = {
-  md: { password: 'md123', role: 'md', name: 'Managing Director' },
+  // 3 Managing Directors
+  sunil: { password: 'Trio@2025', role: 'md', name: 'Sunil Kumar' },
+  rajesh: { password: 'Trio@2025', role: 'md', name: 'Rajesh Reddy' },
+  venkat: { password: 'Trio@2025', role: 'md', name: 'Venkat Rao' },
+  // Other roles
   admin: { password: 'admin123', role: 'admin', name: 'Administrator' },
   naveen: { password: 'hr123', role: 'hr', name: 'Naveen (HR)' },
   naresh: { password: 'hr123', role: 'hr', name: 'Naresh (HR)' },

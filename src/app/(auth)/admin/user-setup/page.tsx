@@ -34,8 +34,10 @@ const DEFAULT_USERS: Array<{
   department: string;
   phone: string;
 }> = [
-  // Management
-  { email: 'md@triovisioninternational.com', password: 'Trio@2025', displayName: 'Managing Director', role: 'md', department: 'Management', phone: '+91 9876543210' },
+  // Management - 3 Managing Directors
+  { email: 'sunil@triovisioninternational.com', password: 'Trio@2025', displayName: 'Sunil Kumar', role: 'md', department: 'Management', phone: '+91 9876543210' },
+  { email: 'rajesh@triovisioninternational.com', password: 'Trio@2025', displayName: 'Rajesh Reddy', role: 'md', department: 'Management', phone: '+91 9876543201' },
+  { email: 'venkat@triovisioninternational.com', password: 'Trio@2025', displayName: 'Venkat Rao', role: 'md', department: 'Management', phone: '+91 9876543202' },
   { email: 'admin@triovisioninternational.com', password: 'Trio@2025', displayName: 'System Admin', role: 'admin', department: 'IT', phone: '+91 9876543211' },
   
   // HR Department
