@@ -16,16 +16,11 @@ import {
   IndianRupee,
   Eye,
   PackageCheck,
-  XCircle,
   Warehouse,
   Image as ImageIcon,
   Grid3X3,
   List,
-  Home,
-  Sparkles,
-  ArrowRight,
-  ShoppingCart,
-  Zap
+  Sparkles
 } from 'lucide-react';
 import { db } from '@/lib/firebase/client';
 import { 
@@ -114,6 +109,20 @@ interface MaterialItem {
   updated_at: string;
 }
 
+// Material Issue Record for tracking dept/project usage
+interface MaterialIssueRecord {
+  id: string;
+  material_id: string;
+  material_name: string;
+  quantity: number;
+  unit: string;
+  department: string;
+  project: string;
+  issued_by: string;
+  issued_at: string;
+  remarks?: string;
+}
+
 // ==========================================
 // STORE PAGE - INVENTORY + INCOMING ORDERS
 // ==========================================
@@ -128,7 +137,7 @@ export default function StorePage() {
   const [loading, setLoading] = useState(true);
 
   // UI State
-  const [activeTab, setActiveTab] = useState<'inventory' | 'incoming' | 'grn'>('inventory');
+  const [activeTab, setActiveTab] = useState<'inventory' | 'incoming' | 'grn' | 'issues'>('inventory');
   const [searchTerm, setSearchTerm] = useState('');
   const [showReceiveModal, setShowReceiveModal] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<PurchaseOrder | null>(null);
@@ -136,6 +145,8 @@ export default function StorePage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
   const [filterCategory, setFilterCategory] = useState<string>('All');
+  const [showLowStockOnly, setShowLowStockOnly] = useState(false);
+  const [materialIssues, setMaterialIssues] = useState<MaterialIssueRecord[]>([]);
 
   // GRN Form state
   const [receivedItems, setReceivedItems] = useState<GRNItem[]>([]);
@@ -234,10 +245,36 @@ export default function StorePage() {
       }
     );
 
+    // Listen to Material Issues (for department/project tracking)
+    const unsubIssues = onSnapshot(
+      collection(db, 'inventory_issue_records'),
+      (snapshot) => {
+        const issues: MaterialIssueRecord[] = snapshot.docs.map(d => ({
+          id: d.id,
+          material_id: d.data().material_id || '',
+          material_name: d.data().material_name || d.data().material || '',
+          quantity: d.data().quantity || 0,
+          unit: d.data().unit || '',
+          department: d.data().department || d.data().team || '',
+          project: d.data().project || d.data().project_name || '',
+          issued_by: d.data().issued_by || d.data().entered_by || '',
+          issued_at: d.data().issued_at || d.data().date || d.data().created_at || '',
+          remarks: d.data().remarks || d.data().notes || ''
+        }));
+        // Sort by date
+        issues.sort((a, b) => new Date(b.issued_at).getTime() - new Date(a.issued_at).getTime());
+        setMaterialIssues(issues);
+      },
+      (error) => {
+        console.error('Error listening to material issues:', error);
+      }
+    );
+
     return () => {
       unsubMaterials();
       unsubPO();
       unsubGRN();
+      unsubIssues();
     };
   }, []);
 
@@ -425,7 +462,8 @@ export default function StorePage() {
     const matchesSearch = (item.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
                          (item.code || '').toLowerCase().includes(searchTerm.toLowerCase());
     const matchesCategory = filterCategory === 'All' || item.category === filterCategory;
-    return matchesSearch && matchesCategory;
+    const matchesLowStock = !showLowStockOnly || (item.current_stock <= item.min_stock);
+    return matchesSearch && matchesCategory && matchesLowStock;
   });
 
   // ==========================================
@@ -470,35 +508,6 @@ export default function StorePage() {
         animate="visible"
         variants={staggerContainer}
       >
-        {/* ════════════════════ TOP NAVIGATION BAR ════════════════════ */}
-        <motion.div 
-          variants={fadeInUp}
-          className="flex items-center justify-between bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-4 mb-6"
-        >
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => router.push('/md')}
-              className="flex items-center gap-2 px-4 py-2.5 bg-white/5 hover:bg-white/10 rounded-xl text-zinc-400 hover:text-white transition-all border border-white/5"
-            >
-              <Home className="w-4 h-4" />
-              <span className="text-sm font-medium">Dashboard</span>
-            </button>
-          </div>
-          
-          <div className="flex items-center gap-4">
-            <button
-              onClick={() => {
-                localStorage.removeItem('currentUser');
-                router.push('/login');
-              }}
-              className="flex items-center gap-2 px-4 py-2.5 bg-red-500/10 hover:bg-red-500/20 rounded-xl text-red-400 transition-all border border-red-500/20"
-            >
-              <XCircle className="w-4 h-4" />
-              <span className="text-sm font-medium">Logout</span>
-            </button>
-          </div>
-        </motion.div>
-
         {/* ════════════════════ PERSONALIZED HEADER - NOTION STYLE ════════════════════ */}
         <motion.header variants={fadeInUp} className="mb-8">
           <div className="flex items-start justify-between">
@@ -539,23 +548,23 @@ export default function StorePage() {
                   </div>
                 )}
                 {stats.lowStock > 0 && (
-                  <div className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-red-500/10 to-orange-500/10 rounded-xl border border-red-500/20">
+                  <button 
+                    onClick={() => {
+                      setShowLowStockOnly(true);
+                      setActiveTab('inventory');
+                    }}
+                    className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-red-500/10 to-orange-500/10 rounded-xl border border-red-500/20 hover:border-red-500/40 transition-all cursor-pointer"
+                  >
                     <AlertTriangle className="w-4 h-4 text-red-400" />
                     <span className="text-sm text-zinc-300">
                       <span className="font-bold text-red-400">{stats.lowStock}</span> items low stock
                     </span>
-                  </div>
+                  </button>
                 )}
-                <div className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-500/10 to-cyan-500/10 rounded-xl border border-blue-500/20">
-                  <Package className="w-4 h-4 text-blue-400" />
-                  <span className="text-sm text-zinc-300">
-                    <span className="font-bold text-blue-400">{stats.totalItems}</span> total items
-                  </span>
-                </div>
                 <div className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-500/10 to-violet-500/10 rounded-xl border border-purple-500/20">
                   <IndianRupee className="w-4 h-4 text-purple-400" />
                   <span className="text-sm text-zinc-300">
-                    ₹<span className="font-bold text-purple-400">{(stats.totalValue / 1000).toFixed(1)}K</span> stock value
+                    <span className="font-bold text-purple-400">{(stats.totalValue / 1000).toFixed(1)}K</span> stock value
                   </span>
                 </div>
               </motion.div>
@@ -584,101 +593,17 @@ export default function StorePage() {
           </div>
         </motion.header>
 
-        {/* ════════════════════ QUICK ACTIONS ════════════════════ */}
-        <motion.div variants={fadeInUp} className="mb-8">
-          <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-            <Zap className="w-5 h-5 text-amber-400" />
-            Quick Actions
-          </h2>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <motion.button
-              whileHover={{ scale: 1.02, y: -2 }}
-              whileTap={{ scale: 0.98 }}
-              onClick={() => setActiveTab('incoming')}
-              className="p-4 bg-gradient-to-br from-green-500/10 to-emerald-500/5 border border-green-500/20 rounded-2xl text-left hover:border-green-500/40 transition-all group"
-            >
-              <div className="flex items-center justify-between mb-2">
-                <Truck className="w-6 h-6 text-green-400" />
-                {stats.pendingReceive > 0 && (
-                  <span className="px-2 py-0.5 bg-green-500/20 text-green-400 text-xs font-bold rounded-full">
-                    {stats.pendingReceive}
-                  </span>
-                )}
-              </div>
-              <h3 className="font-medium text-white group-hover:text-green-400 transition-colors">Receive Orders</h3>
-              <p className="text-xs text-zinc-500 mt-1">Process incoming shipments</p>
-            </motion.button>
-
-            <motion.button
-              whileHover={{ scale: 1.02, y: -2 }}
-              whileTap={{ scale: 0.98 }}
-              onClick={() => setActiveTab('inventory')}
-              className="p-4 bg-gradient-to-br from-blue-500/10 to-cyan-500/5 border border-blue-500/20 rounded-2xl text-left hover:border-blue-500/40 transition-all group"
-            >
-              <div className="flex items-center justify-between mb-2">
-                <Package className="w-6 h-6 text-blue-400" />
-                <ArrowRight className="w-4 h-4 text-zinc-600 group-hover:text-blue-400 group-hover:translate-x-1 transition-all" />
-              </div>
-              <h3 className="font-medium text-white group-hover:text-blue-400 transition-colors">View Stock</h3>
-              <p className="text-xs text-zinc-500 mt-1">Check current inventory</p>
-            </motion.button>
-
-            <motion.button
-              whileHover={{ scale: 1.02, y: -2 }}
-              whileTap={{ scale: 0.98 }}
-              onClick={() => setActiveTab('grn')}
-              className="p-4 bg-gradient-to-br from-purple-500/10 to-violet-500/5 border border-purple-500/20 rounded-2xl text-left hover:border-purple-500/40 transition-all group"
-            >
-              <div className="flex items-center justify-between mb-2">
-                <FileCheck className="w-6 h-6 text-purple-400" />
-                <span className="px-2 py-0.5 bg-purple-500/20 text-purple-400 text-xs font-bold rounded-full">
-                  {goodsReceipts.length}
-                </span>
-              </div>
-              <h3 className="font-medium text-white group-hover:text-purple-400 transition-colors">GRN History</h3>
-              <p className="text-xs text-zinc-500 mt-1">View receipt records</p>
-            </motion.button>
-
-            <motion.button
-              whileHover={{ scale: 1.02, y: -2 }}
-              whileTap={{ scale: 0.98 }}
-              onClick={() => router.push('/purchase')}
-              className="p-4 bg-gradient-to-br from-amber-500/10 to-orange-500/5 border border-amber-500/20 rounded-2xl text-left hover:border-amber-500/40 transition-all group"
-            >
-              <div className="flex items-center justify-between mb-2">
-                <ShoppingCart className="w-6 h-6 text-amber-400" />
-                <ArrowRight className="w-4 h-4 text-zinc-600 group-hover:text-amber-400 group-hover:translate-x-1 transition-all" />
-              </div>
-              <h3 className="font-medium text-white group-hover:text-amber-400 transition-colors">Create PO</h3>
-              <p className="text-xs text-zinc-500 mt-1">New purchase order</p>
-            </motion.button>
-          </div>
-        </motion.div>
-
         {/* ════════════════════ STATS CARDS ════════════════════ */}
-        <motion.div variants={fadeInUp} className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
-          <motion.div 
+        <motion.div variants={fadeInUp} className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+          <motion.button 
             variants={cardHover}
             initial="rest"
             whileHover="hover"
-            className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-4 hover:border-blue-500/30 transition-colors"
-          >
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 bg-blue-500/20 rounded-xl">
-                <Package className="w-5 h-5 text-blue-400" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-white">{stats.totalItems}</p>
-                <p className="text-xs text-zinc-500">Total Items</p>
-              </div>
-            </div>
-          </motion.div>
-
-          <motion.div 
-            variants={cardHover}
-            initial="rest"
-            whileHover="hover"
-            className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-4 hover:border-red-500/30 transition-colors"
+            onClick={() => {
+              setShowLowStockOnly(true);
+              setActiveTab('inventory');
+            }}
+            className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-4 hover:border-red-500/30 transition-colors cursor-pointer text-left"
           >
             <div className="flex items-center gap-3">
               <div className="p-2.5 bg-red-500/20 rounded-xl">
@@ -686,10 +611,10 @@ export default function StorePage() {
               </div>
               <div>
                 <p className="text-2xl font-bold text-white">{stats.lowStock}</p>
-                <p className="text-xs text-zinc-500">Low Stock</p>
+                <p className="text-xs text-zinc-500">Low Stock Items</p>
               </div>
             </div>
-          </motion.div>
+          </motion.button>
 
           <motion.div 
             variants={cardHover}
@@ -703,7 +628,7 @@ export default function StorePage() {
               </div>
               <div>
                 <p className="text-2xl font-bold text-white">{stats.incomingOrders}</p>
-                <p className="text-xs text-zinc-500">Incoming</p>
+                <p className="text-xs text-zinc-500">Incoming Orders</p>
               </div>
             </div>
           </motion.div>
@@ -725,34 +650,39 @@ export default function StorePage() {
             </div>
           </motion.div>
 
-          <motion.div 
+          <motion.button 
             variants={cardHover}
             initial="rest"
             whileHover="hover"
-            className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-4 hover:border-purple-500/30 transition-colors"
+            onClick={() => setActiveTab('issues')}
+            className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-4 hover:border-cyan-500/30 transition-colors cursor-pointer text-left"
           >
             <div className="flex items-center gap-3">
-              <div className="p-2.5 bg-purple-500/20 rounded-xl">
-                <FileCheck className="w-5 h-5 text-purple-400" />
+              <div className="p-2.5 bg-cyan-500/20 rounded-xl">
+                <Building2 className="w-5 h-5 text-cyan-400" />
               </div>
               <div>
-                <p className="text-2xl font-bold text-white">{goodsReceipts.length}</p>
-                <p className="text-xs text-zinc-500">GRNs</p>
+                <p className="text-2xl font-bold text-white">{materialIssues.length}</p>
+                <p className="text-xs text-zinc-500">Dept Issues</p>
               </div>
             </div>
-          </motion.div>
+          </motion.button>
         </motion.div>
 
         {/* ════════════════════ TABS ════════════════════ */}
-        <motion.div variants={fadeInUp} className="flex gap-2 mb-6">
+        <motion.div variants={fadeInUp} className="flex gap-2 mb-6 flex-wrap">
           {[
+            { id: 'inventory', label: 'Current Stock', icon: Package, count: showLowStockOnly ? stats.lowStock : materials.length, color: 'from-blue-500 to-cyan-500' },
             { id: 'incoming', label: 'Incoming Orders', icon: Truck, count: incomingOrders.length, color: 'from-yellow-500 to-orange-500' },
-            { id: 'inventory', label: 'Current Stock', icon: Package, count: materials.length, color: 'from-blue-500 to-cyan-500' },
+            { id: 'issues', label: 'Dept Usage', icon: Building2, count: materialIssues.length, color: 'from-cyan-500 to-teal-500' },
             { id: 'grn', label: 'GRN History', icon: FileCheck, count: goodsReceipts.length, color: 'from-purple-500 to-violet-500' }
           ].map((tab) => (
             <button
               key={tab.id}
-              onClick={() => setActiveTab(tab.id as typeof activeTab)}
+              onClick={() => {
+                setActiveTab(tab.id as typeof activeTab);
+                if (tab.id !== 'inventory') setShowLowStockOnly(false);
+              }}
               className={`flex items-center gap-2 px-5 py-3 rounded-xl font-medium transition-all ${
                 activeTab === tab.id
                   ? `bg-gradient-to-r ${tab.color} text-white shadow-lg`
@@ -768,6 +698,21 @@ export default function StorePage() {
               </span>
             </button>
           ))}
+          
+          {/* Low Stock Toggle */}
+          {activeTab === 'inventory' && (
+            <button
+              onClick={() => setShowLowStockOnly(!showLowStockOnly)}
+              className={`flex items-center gap-2 px-4 py-3 rounded-xl font-medium transition-all ${
+                showLowStockOnly
+                  ? 'bg-red-500/20 text-red-400 border border-red-500/30'
+                  : 'bg-white/5 text-zinc-400 hover:bg-white/10 border border-white/5'
+              }`}
+            >
+              <AlertTriangle className="w-4 h-4" />
+              {showLowStockOnly ? 'Showing Low Stock Only' : 'Show Low Stock Only'}
+            </button>
+          )}
         </motion.div>
 
         {/* ════════════════════ TAB CONTENT ════════════════════ */}
@@ -1128,6 +1073,74 @@ export default function StorePage() {
                   ))}
                 </tbody>
               </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Material Issues by Department Tab */}
+        {activeTab === 'issues' && (
+          <div>
+            <div className="p-4 border-b border-white/10">
+              <h2 className="font-semibold flex items-center gap-2 text-white">
+                <Building2 className="w-5 h-5 text-cyan-400" />
+                Material Usage by Department
+              </h2>
+              <p className="text-xs text-zinc-500 mt-1">Track which department takes materials for which project</p>
+            </div>
+
+            {materialIssues.length === 0 ? (
+              <div className="p-12 text-center">
+                <div className="w-20 h-20 bg-cyan-500/10 rounded-3xl flex items-center justify-center mx-auto mb-4">
+                  <Building2 className="w-10 h-10 text-cyan-400/50" />
+                </div>
+                <p className="text-white font-medium">No material issues recorded</p>
+                <p className="text-sm text-zinc-500 mt-1">Material issues from empStore will appear here</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-white/5">
+                    <tr>
+                      <th className="text-left text-xs font-medium text-zinc-400 px-4 py-3">Material</th>
+                      <th className="text-left text-xs font-medium text-zinc-400 px-4 py-3">Department</th>
+                      <th className="text-left text-xs font-medium text-zinc-400 px-4 py-3">Project</th>
+                      <th className="text-right text-xs font-medium text-zinc-400 px-4 py-3">Quantity</th>
+                      <th className="text-left text-xs font-medium text-zinc-400 px-4 py-3">Issued By</th>
+                      <th className="text-left text-xs font-medium text-zinc-400 px-4 py-3">Date</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/5">
+                    {materialIssues.map((issue) => (
+                      <tr key={issue.id} className="hover:bg-white/5 transition-colors">
+                        <td className="px-4 py-3">
+                          <span className="font-medium text-white">{issue.material_name}</span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="px-2 py-1 bg-cyan-500/20 text-cyan-400 text-xs font-medium rounded-lg">
+                            {issue.department || 'N/A'}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="px-2 py-1 bg-purple-500/20 text-purple-400 text-xs font-medium rounded-lg">
+                            {issue.project || 'N/A'}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <span className="font-semibold text-amber-400">
+                            {issue.quantity} {issue.unit}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-zinc-400">
+                          {issue.issued_by || 'Unknown'}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-zinc-400">
+                          {issue.issued_at ? new Date(issue.issued_at).toLocaleDateString() : 'N/A'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             )}
           </div>
