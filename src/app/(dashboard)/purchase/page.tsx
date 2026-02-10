@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useMemo } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
 import MDPurchaseOverviewNew from './MDPurchaseNew';
 import PurchaseDynamic from './PurchaseDynamic';
@@ -29,16 +30,22 @@ function getUserRoleFromStorage(): string {
 
 export default function PurchasePageWrapper() {
   const userRole = useMemo(() => getUserRoleFromStorage(), []);
+  const searchParams = useSearchParams();
+  const createMode = searchParams.get('create') === 'true';
 
-  // MD sees only the MD Purchase Overview
+  // MD sees the MD Purchase Overview, but if create=true, show PurchaseDynamic for PO creation
   if (userRole === 'md') {
+    if (createMode) {
+      // MD can create PO - show PurchaseDynamic with create mode
+      return <PurchaseDynamic defaultTab="create" />;
+    }
     return <MDPurchaseOverviewNew />;
   }
 
   // Purchase roles - Dynamic workflow with full integration
   const purchaseRoles = ['purchase', 'purchase_manager', 'purchase_team', 'store', 'admin'];
   if (purchaseRoles.includes(userRole)) {
-    return <PurchaseDynamic />;
+    return <PurchaseDynamic defaultTab={createMode ? 'create' : undefined} />;
   }
 
   // All other roles see unauthorized message

@@ -349,10 +349,10 @@ export default function LoginPage() {
                 transition={{ delay: 0.2, duration: 0.5 }}
               >
                 <h1 className="text-3xl sm:text-4xl font-light text-white mb-2 tracking-tight">
-                  Welcome Back
+                  TRIOVISION
                 </h1>
                 <p className="text-zinc-400 text-sm font-light">
-                  Sign in to Composite ERP
+                  Sign in to Triovision ERP
                 </p>
               </motion.div>
             </div>

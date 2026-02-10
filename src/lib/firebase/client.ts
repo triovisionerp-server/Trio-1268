@@ -26,9 +26,10 @@ try {
   // Try to get existing Firestore instance
   db = getFirestore(app);
 } catch {
-  // Initialize with long polling settings if not already initialized
+  // Initialize Firestore without long polling for faster performance
+  // Long polling adds ~5s latency and is only needed for restricted networks
   db = initializeFirestore(app, {
-    experimentalForceLongPolling: true,
+    experimentalForceLongPolling: false,
   });
 }
 

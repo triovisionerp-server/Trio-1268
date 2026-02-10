@@ -32,16 +32,7 @@ export default function HRDashboard() {
   const [activeTab, setActiveTab] = useState<'all' | 'teamleads' | 'pms'>('all');
   const router = useRouter();
 
-  useEffect(() => {
-    const currentUser = localStorage.getItem('currentUser');
-    if (!currentUser || !['naveen', 'naresh', 'dhathri', 'prasuna'].includes(currentUser)) {
-      router.push('/login');
-    } else {
-      setUser(currentUser.charAt(0).toUpperCase() + currentUser.slice(1));
-      loadEmployees();
-    }
-  }, [router]);
-
+  // Load employees function - defined before useEffect
   const loadEmployees = () => {
     const saved = localStorage.getItem('employees');
     if (saved) {
@@ -125,6 +116,16 @@ export default function HRDashboard() {
       localStorage.setItem('employees', JSON.stringify(demoEmployees));
     }
   };
+
+  useEffect(() => {
+    const currentUser = localStorage.getItem('currentUser');
+    if (!currentUser || !['naveen', 'naresh', 'dhathri', 'prasuna'].includes(currentUser)) {
+      router.push('/login');
+    } else {
+      setUser(currentUser.charAt(0).toUpperCase() + currentUser.slice(1));
+      loadEmployees();
+    }
+  }, [router]);
 
   const handleAddEmployee = () => {
     if (!formData.name || !formData.employeeId || !formData.role) {

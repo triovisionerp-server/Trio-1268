@@ -19,6 +19,11 @@ export interface DCItem {
   hsnCode: string;
   quantity: number;
   unit: string;
+  unitPrice?: number;
+  cgst?: number;
+  sgst?: number;
+  igst?: number;
+  amount?: number;
   remarks?: string;
 }
 
@@ -183,13 +188,17 @@ const DeliveryChallanTemplate = forwardRef<HTMLDivElement, {
         <table className="w-full mb-4 text-xs border-collapse">
           <thead>
             <tr className="bg-blue-800 text-white">
-              <th className="py-2 px-2 text-center border border-blue-900 w-10">S.No</th>
-              <th className="py-2 px-2 text-left border border-blue-900 w-24">Item Code</th>
+              <th className="py-2 px-2 text-center border border-blue-900 w-8">S.No</th>
+              <th className="py-2 px-2 text-left border border-blue-900 w-20">Item Code</th>
               <th className="py-2 px-2 text-left border border-blue-900">Description</th>
-              <th className="py-2 px-2 text-center border border-blue-900 w-20">HSN Code</th>
-              <th className="py-2 px-2 text-center border border-blue-900 w-16">Qty</th>
-              <th className="py-2 px-2 text-center border border-blue-900 w-16">Unit</th>
-              <th className="py-2 px-2 text-left border border-blue-900 w-32">Remarks</th>
+              <th className="py-2 px-2 text-center border border-blue-900 w-16">HSN</th>
+              <th className="py-2 px-2 text-center border border-blue-900 w-12">Qty</th>
+              <th className="py-2 px-2 text-center border border-blue-900 w-12">Unit</th>
+              <th className="py-2 px-2 text-right border border-blue-900 w-20">Rate (₹)</th>
+              <th className="py-2 px-2 text-center border border-blue-900 w-14">CGST%</th>
+              <th className="py-2 px-2 text-center border border-blue-900 w-14">SGST%</th>
+              <th className="py-2 px-2 text-center border border-blue-900 w-14">IGST%</th>
+              <th className="py-2 px-2 text-right border border-blue-900 w-24">Amount (₹)</th>
             </tr>
           </thead>
           <tbody>
@@ -197,16 +206,24 @@ const DeliveryChallanTemplate = forwardRef<HTMLDivElement, {
               <tr key={index} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
                 <td className="py-2 px-2 text-center border">{item.slNo}</td>
                 <td className="py-2 px-2 border font-medium">{item.itemCode}</td>
-                <td className="py-2 px-2 border">{item.description}</td>
+                <td className="py-2 px-2 border">{item.description}{item.remarks && <span className="text-gray-500 italic text-[10px] block">({item.remarks})</span>}</td>
                 <td className="py-2 px-2 text-center border">{item.hsnCode}</td>
                 <td className="py-2 px-2 text-center border font-semibold">{item.quantity}</td>
                 <td className="py-2 px-2 text-center border">{item.unit}</td>
-                <td className="py-2 px-2 border text-gray-600">{item.remarks || '-'}</td>
+                <td className="py-2 px-2 text-right border">{item.unitPrice ? `₹${item.unitPrice.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}` : '-'}</td>
+                <td className="py-2 px-2 text-center border">{item.cgst ? `${item.cgst}%` : '-'}</td>
+                <td className="py-2 px-2 text-center border">{item.sgst ? `${item.sgst}%` : '-'}</td>
+                <td className="py-2 px-2 text-center border">{item.igst ? `${item.igst}%` : '-'}</td>
+                <td className="py-2 px-2 text-right border font-semibold">{item.amount ? `₹${item.amount.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}` : '-'}</td>
               </tr>
             ))}
             {/* Empty rows for manual entry */}
-            {data.items.length < 10 && Array.from({ length: 10 - data.items.length }).map((_, i) => (
+            {data.items.length < 5 && Array.from({ length: 5 - data.items.length }).map((_, i) => (
               <tr key={`empty-${i}`} className="h-8">
+                <td className="border"></td>
+                <td className="border"></td>
+                <td className="border"></td>
+                <td className="border"></td>
                 <td className="border"></td>
                 <td className="border"></td>
                 <td className="border"></td>
@@ -223,6 +240,10 @@ const DeliveryChallanTemplate = forwardRef<HTMLDivElement, {
               <td className="py-2 px-2 border text-center">{data.items.reduce((sum, item) => sum + item.quantity, 0)}</td>
               <td className="py-2 px-2 border"></td>
               <td className="py-2 px-2 border"></td>
+              <td className="py-2 px-2 border"></td>
+              <td className="py-2 px-2 border"></td>
+              <td className="py-2 px-2 border text-right font-bold">Grand Total:</td>
+              <td className="py-2 px-2 border text-right font-bold text-blue-800">₹{data.items.reduce((sum, item) => sum + (item.amount || 0), 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
             </tr>
           </tfoot>
         </table>
@@ -250,16 +271,16 @@ const DeliveryChallanTemplate = forwardRef<HTMLDivElement, {
             </div>
           </div>
           <div className="text-center">
+            <p className="font-semibold mb-8">For {COMPANY_INFO.shortName}</p>
+            <div className="border-t border-gray-400 pt-1">
+              <p className="text-gray-600">Authorized Signatory</p>
+            </div>
+          </div>
+          <div className="text-center">
             <p className="font-semibold mb-8">Received By</p>
             <div className="border-t border-gray-400 pt-1">
               <p>____________</p>
               <p className="text-[10px] text-gray-500">(Name & Sign with Stamp)</p>
-            </div>
-          </div>
-          <div className="text-center">
-            <p className="font-semibold mb-8">For {COMPANY_INFO.shortName}</p>
-            <div className="border-t border-gray-400 pt-1">
-              <p className="text-gray-600">Authorized Signatory</p>
             </div>
           </div>
         </div>

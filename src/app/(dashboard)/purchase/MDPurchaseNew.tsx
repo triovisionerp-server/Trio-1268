@@ -2,13 +2,12 @@
 
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useRouter } from 'next/navigation';
 import {
   ShoppingCart, Clock, CheckCircle, XCircle, AlertTriangle, Eye,
-  IndianRupee, Building2, Loader2, X, FileText, TrendingUp,
-  Package, ClipboardList, Send, MessageSquare, ThumbsUp, ThumbsDown
+  IndianRupee, Loader2, X, TrendingUp,
+  ClipboardList, MessageSquare, ThumbsUp, ThumbsDown, Plus
 } from 'lucide-react';
-import { db } from '@/lib/firebase/client';
-import { collection, onSnapshot, query, where, orderBy } from 'firebase/firestore';
 import {
   subscribeToPOs,
   subscribeToPRs,
@@ -16,14 +15,11 @@ import {
   approvePO,
   rejectPO,
 } from '@/lib/services/procurementService';
-import { PurchaseOrder, PurchaseRequest, Enquiry, COLLECTIONS, MD_APPROVAL_THRESHOLD } from '@/types/purchase';
+import { PurchaseOrder, PurchaseRequest, Enquiry } from '@/types/purchase';
 import {
   AreaChart, Area, PieChart as RechartsPie, Pie, Cell,
-  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, BarChart, Bar
+  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
 } from 'recharts';
-
-// Colors
-const COLORS = ['#10b981', '#f59e0b', '#ef4444', '#06b6d4', '#8b5cf6'];
 
 // ==========================================
 // STATUS BADGE
@@ -58,6 +54,7 @@ const StatusBadge = ({ status }: { status: string }) => {
 // MAIN MD PURCHASE OVERVIEW
 // ==========================================
 export default function MDPurchaseOverviewNew() {
+  const router = useRouter();
   const [pos, setPOs] = useState<PurchaseOrder[]>([]);
   const [prs, setPRs] = useState<PurchaseRequest[]>([]);
   const [enquiries, setEnquiries] = useState<Enquiry[]>([]);
@@ -78,7 +75,6 @@ export default function MDPurchaseOverviewNew() {
 
   // Subscribe to data
   useEffect(() => {
-    setLoading(true);
     const unsubPOs = subscribeToPOs((data) => {
       setPOs(data);
       setLoading(false);
@@ -162,9 +158,20 @@ export default function MDPurchaseOverviewNew() {
 
       <div className="relative p-6 lg:p-8">
         {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-white mb-2">Purchase Management</h1>
-          <p className="text-zinc-400">MD Dashboard - Review and approve purchase orders</p>
+        <div className="mb-8 flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-white mb-2">Purchase Management</h1>
+            <p className="text-zinc-400">MD Dashboard - Review and approve purchase orders</p>
+          </div>
+          
+          {/* Create PO Button */}
+          <button
+            onClick={() => router.push('/purchase?create=true')}
+            className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-500 hover:to-green-500 text-white rounded-xl font-medium transition-all shadow-lg shadow-emerald-500/20"
+          >
+            <Plus className="w-5 h-5" />
+            Create New PO
+          </button>
         </div>
 
         {/* Alert for Pending Approvals */}
@@ -256,7 +263,7 @@ export default function MDPurchaseOverviewNew() {
           {tabs.map(tab => (
             <button
               key={tab.id}
-              onClick={() => setActiveTab(tab.id as any)}
+              onClick={() => setActiveTab(tab.id as 'overview' | 'approvals' | 'all')}
               className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium whitespace-nowrap transition-all ${
                 activeTab === tab.id
                   ? 'bg-gradient-to-r from-emerald-500 to-cyan-600 text-white'
@@ -332,7 +339,7 @@ export default function MDPurchaseOverviewNew() {
                     <YAxis stroke="#888" tickFormatter={(v) => `₹${(v/1000)}k`} />
                     <Tooltip 
                       contentStyle={{ backgroundColor: '#18181b', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px' }}
-                      formatter={(value: number) => [`₹${value.toLocaleString()}`, 'Value']}
+                      formatter={(value) => [`₹${Number(value || 0).toLocaleString()}`, 'Value']}
                     />
                     <Area type="monotone" dataKey="value" stroke="#10b981" fillOpacity={1} fill="url(#colorValue)" />
                   </AreaChart>

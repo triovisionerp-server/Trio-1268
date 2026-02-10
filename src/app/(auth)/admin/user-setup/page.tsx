@@ -75,12 +75,7 @@ export default function UserSetupPage() {
   const [seedProgress, setSeedProgress] = useState<{current: number; total: number; email: string} | null>(null);
   const [mounted, setMounted] = useState(false);
 
-  // Handle client-side mounting
-  useEffect(() => {
-    setMounted(true);
-    fetchExistingUsers();
-  }, []);
-
+  // Define function before useEffect to avoid "accessed before declaration" error
   const fetchExistingUsers = async () => {
     try {
       const usersRef = collection(db, USER_COLLECTIONS.USERS);
@@ -94,6 +89,12 @@ export default function UserSetupPage() {
       console.error('Error fetching users:', error);
     }
   };
+
+  // Handle client-side mounting
+  useEffect(() => {
+    setMounted(true);
+    fetchExistingUsers();
+  }, []);
 
   const createSingleUser = async (userData: typeof DEFAULT_USERS[0]): Promise<{ success: boolean; uid?: string; error?: string }> => {
     try {

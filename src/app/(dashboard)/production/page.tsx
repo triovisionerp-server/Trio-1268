@@ -92,14 +92,44 @@ interface ProductionRecord {
   completionDate?: string;
 }
 
+// BOM interface for proper typing
+interface BOM {
+  id: number;
+  projectCode: string;
+  moldSeries: string;
+  totalMolds: number;
+  targetPartsCompletion: number;
+  status: string;
+  materials: {
+    gelcoatPerMold: number;
+  };
+}
+
 export default function SupervisorProductionPage() {
   const [user, setUser] = useState('');
-  const [boms, setBoms] = useState<any[]>([]);
+  const [boms, setBoms] = useState<BOM[]>([]);
   const [productions, setProductions] = useState<ProductionRecord[]>([]);
-  const [selectedBOM, setSelectedBOM] = useState<any>(null);
+  const [selectedBOM, setSelectedBOM] = useState<BOM | null>(null);
   const [showTrackingModal, setShowTrackingModal] = useState(false);
   const [currentProduction, setCurrentProduction] = useState<ProductionRecord | null>(null);
   const router = useRouter();
+
+  // Define functions before useEffect to avoid "accessed before declaration" error
+  const loadBOMs = () => {
+    const saved = localStorage.getItem('boms');
+    if (saved) {
+      const allBOMs = JSON.parse(saved);
+      // Filter only Pending or In Progress BOMs
+      setBoms(allBOMs.filter((b: BOM) => b.status !== 'Completed'));
+    }
+  };
+
+  const loadProductions = () => {
+    const saved = localStorage.getItem('productions');
+    if (saved) {
+      setProductions(JSON.parse(saved));
+    }
+  };
 
   /**
    * 🎓 LEARNING: Load data when page opens
@@ -115,26 +145,10 @@ export default function SupervisorProductionPage() {
     }
   }, [router]);
 
-  const loadBOMs = () => {
-    const saved = localStorage.getItem('boms');
-    if (saved) {
-      const allBOMs = JSON.parse(saved);
-      // Filter only Pending or In Progress BOMs
-      setBoms(allBOMs.filter((b: any) => b.status !== 'Completed'));
-    }
-  };
-
-  const loadProductions = () => {
-    const saved = localStorage.getItem('productions');
-    if (saved) {
-      setProductions(JSON.parse(saved));
-    }
-  };
-
   /**
    * 🎓 LEARNING: Initialize new production tracking
    */
-  const startProduction = (bom: any) => {
+  const startProduction = (bom: BOM) => {
     const newProduction: ProductionRecord = {
       id: Date.now(),
       bomId: bom.id,
@@ -216,42 +230,50 @@ export default function SupervisorProductionPage() {
   const saveProduction = () => {
     if (!currentProduction) return;
     
+    // Create a copy to avoid mutating state directly
+    const updatedProduction = { ...currentProduction };
+    
     // Update status
     const allStepsCompleted = 
-      currentProduction.steps.csr.completed &&
-      currentProduction.steps.packing.completed &&
-      currentProduction.steps.gelcoatApp.completed &&
-      currentProduction.steps.fiberPlacement.completed &&
-      currentProduction.steps.demolding.completed &&
-      currentProduction.steps.trimming.completed &&
-      currentProduction.steps.drySanding.completed &&
-      currentProduction.steps.waterSanding.completed &&
-      currentProduction.steps.buffing.completed &&
-      currentProduction.steps.palletMaking.completed &&
-      currentProduction.steps.partLoading.completed &&
-      currentProduction.steps.dispatch.completed;
+      updatedProduction.steps.csr.completed &&
+      updatedProduction.steps.packing.completed &&
+      updatedProduction.steps.gelcoatApp.completed &&
+      updatedProduction.steps.fiberPlacement.completed &&
+      updatedProduction.steps.demolding.completed &&
+      updatedProduction.steps.trimming.completed &&
+      updatedProduction.steps.drySanding.completed &&
+      updatedProduction.steps.waterSanding.completed &&
+      updatedProduction.steps.buffing.completed &&
+      updatedProduction.steps.palletMaking.completed &&
+      updatedProduction.steps.partLoading.completed &&
+      updatedProduction.steps.dispatch.completed;
     
-    currentProduction.status = allStepsCompleted ? 'Completed' : 'In Progress';
-    if (!currentProduction.startDate) {
-      currentProduction.startDate = new Date().toISOString().split('T')[0];
+    updatedProduction.status = allStepsCompleted ? 'Completed' : 'In Progress';
+    if (!updatedProduction.startDate) {
+      updatedProduction.startDate = new Date().toISOString().split('T')[0];
     }
     if (allStepsCompleted) {
-      currentProduction.completionDate = new Date().toISOString().split('T')[0];
+      updatedProduction.completionDate = new Date().toISOString().split('T')[0];
     }
     
     // Auto-calculate gelcoat if not manually entered
-    if (currentProduction.materialsUsed.gelcoatUsed === 0 && selectedBOM) {
-      currentProduction.materialsUsed.gelcoatUsed = 
-        selectedBOM.totalMolds * selectedBOM.materials.gelcoatPerMold;
+    if (updatedProduction.materialsUsed.gelcoatUsed === 0 && selectedBOM) {
+      updatedProduction.materialsUsed = {
+        ...updatedProduction.materialsUsed,
+        gelcoatUsed: selectedBOM.totalMolds * selectedBOM.materials.gelcoatPerMold
+      };
     }
     
+    // Update state with new production
+    setCurrentProduction(updatedProduction);
+    
     // Save to productions
-    const existing = productions.find(p => p.bomId === currentProduction.bomId);
+    const existing = productions.find(p => p.bomId === updatedProduction.bomId);
     let updated;
     if (existing) {
-      updated = productions.map(p => p.bomId === currentProduction.bomId ? currentProduction : p);
+      updated = productions.map(p => p.bomId === updatedProduction.bomId ? updatedProduction : p);
     } else {
-      updated = [...productions, currentProduction];
+      updated = [...productions, updatedProduction];
     }
     
     setProductions(updated);

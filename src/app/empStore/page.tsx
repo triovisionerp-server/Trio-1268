@@ -11,10 +11,41 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import * as XLSX from 'xlsx';
 import { db } from '@/lib/firebase';
-import { doc, writeBatch, collection, addDoc, getDocs, query, orderBy, onSnapshot, where } from 'firebase/firestore';
+import { doc, writeBatch, collection, addDoc, getDocs, query, orderBy, onSnapshot, where, updateDoc } from 'firebase/firestore';
 import type { DailyStockRecord, DailyMaterialStock } from '@/types/inventory';
 import type { PurchaseOrder } from '@/lib/services/integratedProcurementService';
 import { COLLECTIONS, formatCurrency } from '@/lib/services/integratedProcurementService';
+
+// GRN Types for receipt confirmation
+interface GRNItem {
+  itemID: string;
+  itemName: string;
+  orderedQty: number;
+  receivedQty: number;
+  unit: string;
+  unitPrice: number;
+  totalValue: number;
+  qualityStatus: 'pending' | 'passed' | 'failed' | 'partial';
+  remarks?: string;
+}
+
+interface GoodsReceipt {
+  id?: string;
+  grnNumber: string;
+  poID: string;
+  poNumber: string;
+  vendorId: string;
+  vendorName: string;
+  items: GRNItem[];
+  totalReceivedValue: number;
+  receivedBy: string;
+  receivedByName: string;
+  receivedAt: string;
+  status: 'pending' | 'completed' | 'partial';
+  invoiceNumber?: string;
+  invoiceDate?: string;
+  remarks?: string;
+}
 
 // Firebase Collection Names (shared with Purchase/Store pages)
 const FB_MATERIALS = 'inventory_materials';
@@ -320,6 +351,14 @@ const EmployeeStore = () => {
   const [selectedIncomingOrder, setSelectedIncomingOrder] = useState<PurchaseOrder | null>(null);
   const [showIncomingOrderModal, setShowIncomingOrderModal] = useState(false);
   
+  // Goods Receipt State (for confirm receipt)
+  const [showReceiveModal, setShowReceiveModal] = useState(false);
+  const [receivedItems, setReceivedItems] = useState<GRNItem[]>([]);
+  const [invoiceNumber, setInvoiceNumber] = useState('');
+  const [invoiceDate, setInvoiceDate] = useState('');
+  const [receiveRemarks, setReceiveRemarks] = useState('');
+  const [isConfirmingReceipt, setIsConfirmingReceipt] = useState(false);
+  
   // Daily Stock State
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [dailyStockHistory, setDailyStockHistory] = useState<DailyStockRecord[]>([]);
@@ -497,6 +536,162 @@ const EmployeeStore = () => {
       return false;
     }
   }, [stockItems, suppliers, calculateClosingStock]);
+
+  // ═══════════════════════════════════════════════════════════════
+  // GOODS RECEIPT FUNCTIONS (Confirm Receipt)
+  // ═══════════════════════════════════════════════════════════════
+  
+  // Generate GRN Number
+  const generateGRNNumber = useCallback(() => {
+    const date = new Date();
+    const year = date.getFullYear().toString().slice(-2);
+    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+    return `GRN-${year}${month}-${random}`;
+  }, []);
+
+  // Start receive process - open modal with items
+  const handleStartReceive = useCallback((order: PurchaseOrder) => {
+    if (order.status === 'pending_md_approval') {
+      showToast('This order is pending MD approval. Cannot receive yet.', 'error');
+      return;
+    }
+
+    setSelectedIncomingOrder(order);
+    // Initialize received items from order items
+    const items: GRNItem[] = (order.items || []).map(item => ({
+      itemID: item.materialId || '',
+      itemName: item.materialName || '',
+      orderedQty: item.quantity || 0,
+      receivedQty: item.quantity || 0, // Default to full quantity
+      unit: item.unit || '',
+      unitPrice: item.unitPrice || 0,
+      totalValue: (item.quantity || 0) * (item.unitPrice || 0),
+      qualityStatus: 'pending' as const,
+      remarks: ''
+    }));
+    setReceivedItems(items);
+    setShowIncomingOrderModal(false);
+    setShowReceiveModal(true);
+  }, []);
+
+  // Update received quantity
+  const updateReceivedQty = useCallback((index: number, qty: number) => {
+    setReceivedItems(prev => {
+      const updated = [...prev];
+      updated[index].receivedQty = Math.max(0, Math.min(qty, updated[index].orderedQty));
+      updated[index].totalValue = updated[index].receivedQty * updated[index].unitPrice;
+      return updated;
+    });
+  }, []);
+
+  // Confirm goods receipt
+  const handleConfirmReceipt = useCallback(async () => {
+    if (!selectedIncomingOrder) return;
+    if (!invoiceNumber.trim()) {
+      showToast('Please enter invoice number', 'error');
+      return;
+    }
+
+    setIsConfirmingReceipt(true);
+
+    try {
+      // Check if all items fully received
+      const allFullyReceived = receivedItems.every(
+        item => item.receivedQty === item.orderedQty
+      );
+      const anyReceived = receivedItems.some(item => item.receivedQty > 0);
+
+      if (!anyReceived) {
+        showToast('Please enter received quantities', 'error');
+        setIsConfirmingReceipt(false);
+        return;
+      }
+
+      // Update PO status in Firebase
+      const newStatus = allFullyReceived ? 'received' : 'partially_received';
+      const poRef = doc(db, COLLECTIONS.PURCHASE_ORDERS, selectedIncomingOrder.id);
+      await updateDoc(poRef, {
+        status: newStatus,
+        updatedAt: new Date().toISOString(),
+        receivedAt: new Date().toISOString()
+      });
+
+      // Calculate total received value
+      const totalValue = receivedItems.reduce((sum, item) => sum + item.totalValue, 0);
+
+      // Get current user info
+      const currentUser = typeof window !== 'undefined' ? localStorage.getItem('currentUser') : null;
+      let receivedByName = 'Store Employee';
+      let receivedById = 'emp_store';
+      if (currentUser) {
+        try {
+          const user = JSON.parse(currentUser);
+          receivedByName = user.displayName || user.name || 'Store Employee';
+          receivedById = user.uid || user.id || 'emp_store';
+        } catch { /* use defaults */ }
+      }
+
+      // Create GRN record
+      const grn: Omit<GoodsReceipt, 'id'> = {
+        grnNumber: generateGRNNumber(),
+        poID: selectedIncomingOrder.id,
+        poNumber: selectedIncomingOrder.poNumber,
+        vendorId: selectedIncomingOrder.vendorId || '',
+        vendorName: selectedIncomingOrder.vendorName || 'Unknown Vendor',
+        items: receivedItems.map(item => ({
+          ...item,
+          qualityStatus: 'passed' as const
+        })),
+        totalReceivedValue: totalValue,
+        receivedBy: receivedById,
+        receivedByName: receivedByName,
+        receivedAt: new Date().toISOString(),
+        status: allFullyReceived ? 'completed' : 'partial',
+        invoiceNumber: invoiceNumber,
+        invoiceDate: invoiceDate || undefined,
+        remarks: receiveRemarks || undefined
+      };
+
+      await addDoc(collection(db, COLLECTIONS.GOODS_RECEIPTS), grn);
+
+      // Update local stock (inward)
+      const updatedItems = stockItems.map(item => {
+        const receivedItem = receivedItems.find(ri => 
+          ri.itemName.toLowerCase() === item.materialName.toLowerCase() ||
+          ri.itemID === item.id
+        );
+        if (receivedItem && receivedItem.receivedQty > 0) {
+          return {
+            ...item,
+            inword: (item.inword || 0) + receivedItem.receivedQty
+          };
+        }
+        return item;
+      });
+      setStockItems(updatedItems);
+
+      // Log audit
+      logAudit('PURCHASE', 'Stock', selectedIncomingOrder.poNumber, 
+        `Received goods: ${receivedItems.filter(i => i.receivedQty > 0).length} items, Total: ₹${totalValue.toLocaleString()}, Invoice: ${invoiceNumber}`);
+
+      // Reset state
+      setShowReceiveModal(false);
+      setSelectedIncomingOrder(null);
+      setReceivedItems([]);
+      setInvoiceNumber('');
+      setInvoiceDate('');
+      setReceiveRemarks('');
+
+      showToast(`✅ Goods received! GRN: ${grn.grnNumber}`, 'success');
+
+    } catch (error) {
+      console.error('Error confirming receipt:', error);
+      showToast('Failed to confirm receipt. Please try again.', 'error');
+    } finally {
+      setIsConfirmingReceipt(false);
+    }
+  }, [selectedIncomingOrder, invoiceNumber, invoiceDate, receiveRemarks, receivedItems, stockItems, generateGRNNumber, logAudit]);
 
   // ═══════════════════════════════════════════════════════════════
   // DAILY STOCK FUNCTIONS
@@ -1516,16 +1711,25 @@ const EmployeeStore = () => {
                             </span>
                           </td>
                           <td className="border border-zinc-800 px-4 py-3 text-center">
-                            <button
-                              onClick={() => {
-                                setSelectedIncomingOrder(order);
-                                setShowIncomingOrderModal(true);
-                              }}
-                              className="px-3 py-1.5 rounded-lg bg-indigo-500/20 border border-indigo-500/30 text-indigo-400 text-xs font-medium hover:bg-indigo-500/30 transition-all flex items-center gap-1 mx-auto"
-                            >
-                              <Eye className="w-3 h-3" />
-                              View
-                            </button>
+                            <div className="flex items-center justify-center gap-2">
+                              <button
+                                onClick={() => {
+                                  setSelectedIncomingOrder(order);
+                                  setShowIncomingOrderModal(true);
+                                }}
+                                className="px-3 py-1.5 rounded-lg bg-indigo-500/20 border border-indigo-500/30 text-indigo-400 text-xs font-medium hover:bg-indigo-500/30 transition-all flex items-center gap-1"
+                              >
+                                <Eye className="w-3 h-3" />
+                                View
+                              </button>
+                              <button
+                                onClick={() => handleStartReceive(order)}
+                                className="px-3 py-1.5 rounded-lg bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 text-xs font-medium hover:bg-emerald-500/30 transition-all flex items-center gap-1"
+                              >
+                                <CheckCircle2 className="w-3 h-3" />
+                                Receive
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -1659,6 +1863,191 @@ const EmployeeStore = () => {
                       <div className="text-zinc-300 text-sm">{selectedIncomingOrder.notes}</div>
                     </div>
                   )}
+
+                  {/* Confirm Receipt Button */}
+                  {(selectedIncomingOrder.status === 'approved' || 
+                    selectedIncomingOrder.status === 'ordered' || 
+                    selectedIncomingOrder.status === 'partially_received') && (
+                    <div className="pt-4 border-t border-zinc-700">
+                      <button
+                        onClick={() => handleStartReceive(selectedIncomingOrder)}
+                        className="w-full px-6 py-3 bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-500 hover:to-green-500 text-white rounded-xl font-medium flex items-center justify-center gap-2 transition-all shadow-lg shadow-emerald-500/20"
+                      >
+                        <CheckCircle2 className="w-5 h-5" />
+                        Confirm Receipt - Stock Received
+                      </button>
+                      <p className="text-zinc-500 text-xs text-center mt-2">
+                        Click to confirm goods have been received and update inventory
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* ═══════════════════════════════════════════════════════════════ */}
+        {/* GOODS RECEIPT MODAL */}
+        {/* ═══════════════════════════════════════════════════════════════ */}
+        <AnimatePresence>
+          {showReceiveModal && selectedIncomingOrder && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+              onClick={() => !isConfirmingReceipt && setShowReceiveModal(false)}
+            >
+              <motion.div
+                initial={{ scale: 0.95, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.95, opacity: 0 }}
+                onClick={(e) => e.stopPropagation()}
+                className="bg-zinc-900 border border-zinc-700 rounded-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden"
+              >
+                {/* Header */}
+                <div className="p-6 border-b border-zinc-800 bg-gradient-to-r from-emerald-900/30 to-green-900/30">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-xl font-semibold text-white flex items-center gap-2">
+                        <Package className="w-6 h-6 text-emerald-400" />
+                        Confirm Goods Receipt
+                      </h3>
+                      <p className="text-zinc-400 text-sm mt-1">
+                        {selectedIncomingOrder.poNumber} • {selectedIncomingOrder.vendorName}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => !isConfirmingReceipt && setShowReceiveModal(false)}
+                      disabled={isConfirmingReceipt}
+                      className="p-2 rounded-lg hover:bg-zinc-800 transition-colors disabled:opacity-50"
+                    >
+                      <X className="w-5 h-5 text-zinc-400" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Content */}
+                <div className="p-6 space-y-6 overflow-y-auto max-h-[60vh]">
+                  {/* Invoice Details */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-zinc-400 text-sm mb-1 block">Invoice Number *</label>
+                      <input
+                        type="text"
+                        value={invoiceNumber}
+                        onChange={(e) => setInvoiceNumber(e.target.value)}
+                        placeholder="Enter invoice number"
+                        className="w-full px-4 py-2.5 bg-zinc-800 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:border-emerald-500 focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-zinc-400 text-sm mb-1 block">Invoice Date</label>
+                      <input
+                        type="date"
+                        value={invoiceDate}
+                        onChange={(e) => setInvoiceDate(e.target.value)}
+                        className="w-full px-4 py-2.5 bg-zinc-800 border border-zinc-700 rounded-xl text-white focus:border-emerald-500 focus:outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Items to Receive */}
+                  <div>
+                    <h4 className="text-white font-medium mb-3 flex items-center gap-2">
+                      <Truck className="w-4 h-4 text-emerald-400" />
+                      Items to Receive
+                    </h4>
+                    <div className="bg-zinc-800/50 rounded-xl border border-zinc-700 overflow-hidden">
+                      <table className="w-full text-sm">
+                        <thead className="bg-zinc-800">
+                          <tr>
+                            <th className="px-4 py-3 text-left text-zinc-400 text-xs">Material</th>
+                            <th className="px-4 py-3 text-center text-zinc-400 text-xs">Ordered</th>
+                            <th className="px-4 py-3 text-center text-zinc-400 text-xs">Received</th>
+                            <th className="px-4 py-3 text-right text-zinc-400 text-xs">Value</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {receivedItems.map((item, index) => (
+                            <tr key={index} className="border-t border-zinc-700">
+                              <td className="px-4 py-3">
+                                <div className="text-white font-medium">{item.itemName}</div>
+                                <div className="text-zinc-500 text-xs">₹{item.unitPrice}/{item.unit}</div>
+                              </td>
+                              <td className="px-4 py-3 text-center text-zinc-300">
+                                {item.orderedQty} {item.unit}
+                              </td>
+                              <td className="px-4 py-3 text-center">
+                                <input
+                                  type="number"
+                                  value={item.receivedQty}
+                                  onChange={(e) => updateReceivedQty(index, Number(e.target.value))}
+                                  min={0}
+                                  max={item.orderedQty}
+                                  className="w-20 px-3 py-1.5 bg-zinc-900 border border-zinc-600 rounded-lg text-center text-emerald-400 font-medium focus:border-emerald-500 focus:outline-none"
+                                />
+                              </td>
+                              <td className="px-4 py-3 text-right text-emerald-400 font-medium">
+                                {formatCurrency(item.totalValue)}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot className="bg-zinc-800/50">
+                          <tr>
+                            <td colSpan={3} className="px-4 py-3 text-right text-zinc-400 font-medium">
+                              Total Received Value:
+                            </td>
+                            <td className="px-4 py-3 text-right text-xl font-bold text-emerald-400">
+                              {formatCurrency(receivedItems.reduce((sum, item) => sum + item.totalValue, 0))}
+                            </td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* Remarks */}
+                  <div>
+                    <label className="text-zinc-400 text-sm mb-1 block">Remarks (Optional)</label>
+                    <textarea
+                      value={receiveRemarks}
+                      onChange={(e) => setReceiveRemarks(e.target.value)}
+                      placeholder="Any notes about this receipt..."
+                      rows={2}
+                      className="w-full px-4 py-2.5 bg-zinc-800 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:border-emerald-500 focus:outline-none resize-none"
+                    />
+                  </div>
+                </div>
+
+                {/* Footer */}
+                <div className="p-6 border-t border-zinc-800 bg-zinc-800/30 flex items-center justify-between">
+                  <button
+                    onClick={() => setShowReceiveModal(false)}
+                    disabled={isConfirmingReceipt}
+                    className="px-6 py-2.5 border border-zinc-600 text-zinc-300 rounded-xl hover:bg-zinc-800 transition-colors disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleConfirmReceipt}
+                    disabled={isConfirmingReceipt || !invoiceNumber.trim()}
+                    className="px-8 py-2.5 bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-500 hover:to-green-500 text-white rounded-xl font-medium flex items-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-emerald-500/20"
+                  >
+                    {isConfirmingReceipt ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        Processing...
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle2 className="w-4 h-4" />
+                        Confirm Receipt
+                      </>
+                    )}
+                  </button>
                 </div>
               </motion.div>
             </motion.div>

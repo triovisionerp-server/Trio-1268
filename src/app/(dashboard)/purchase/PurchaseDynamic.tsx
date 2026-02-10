@@ -133,7 +133,12 @@ interface Supplier {
 // ==========================================
 // MAIN COMPONENT
 // ==========================================
-export default function PurchaseDynamic() {
+
+interface PurchaseDynamicProps {
+  defaultTab?: string;
+}
+
+export default function PurchaseDynamic({ defaultTab }: PurchaseDynamicProps) {
   // ==========================================
   // STATE
   // ==========================================
@@ -163,7 +168,7 @@ export default function PurchaseDynamic() {
   
   // Modal states
   const [showCreatePRModal, setShowCreatePRModal] = useState(false);
-  const [showCreatePOModal, setShowCreatePOModal] = useState(false);
+  const [showCreatePOModal, setShowCreatePOModal] = useState(defaultTab === 'create');
   const [showDirectPOModal, setShowDirectPOModal] = useState(false);
   const [showCreateGRNModal, setShowCreateGRNModal] = useState(false);
   const [showCreateInvoiceModal, setShowCreateInvoiceModal] = useState(false);

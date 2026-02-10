@@ -25,8 +25,17 @@ const tableRowVariant = {
   visible: { opacity: 1, x: 0 }
 };
 
+interface Employee {
+  id: number;
+  name: string;
+  email: string;
+  role: string;
+  status: string;
+  joined?: string;
+}
+
 export default function EmployeeManagement() {
-  const [employees, setEmployees] = useState<any[]>([]);
+  const [employees, setEmployees] = useState<Employee[]>([]);
   const [showModal, setShowModal] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   
@@ -44,7 +53,8 @@ export default function EmployeeManagement() {
     const savedUsers = localStorage.getItem('erp_users');
     if (savedUsers) {
       try {
-        setEmployees(JSON.parse(savedUsers));
+        const parsed = JSON.parse(savedUsers);
+        setEmployees(parsed);
       } catch {
         setEmployees([]);
       }

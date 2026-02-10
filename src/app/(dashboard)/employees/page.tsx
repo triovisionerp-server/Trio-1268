@@ -7,8 +7,17 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
+interface Employee {
+  id: number;
+  name: string;
+  email: string;
+  role: string;
+  status: string;
+  joined?: string;
+}
+
 export default function EmployeeManagement() {
-  const [employees, setEmployees] = useState<any[]>([]);
+  const [employees, setEmployees] = useState<Employee[]>([]);
   const [showModal, setShowModal] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   
@@ -25,10 +34,11 @@ export default function EmployeeManagement() {
     // 1. Load Users from "Database"
     const savedUsers = localStorage.getItem('erp_users');
     if (savedUsers) {
-      setEmployees(JSON.parse(savedUsers));
+      const parsed = JSON.parse(savedUsers);
+      setEmployees(parsed);
     } else {
       // Initial Seed Data
-      const initial = [
+      const initial: Employee[] = [
         { id: 1, name: 'Admin User', email: 'admin@trio.com', role: 'md', status: 'Active', joined: '2024-01-01' },
         { id: 2, name: 'Rajesh Kumar', email: 'rajesh@trio.com', role: 'supervisor', status: 'Active', joined: '2024-02-15' },
       ];

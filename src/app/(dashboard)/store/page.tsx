@@ -215,9 +215,11 @@ export default function StorePage() {
       (snapshot) => {
         const orders: PurchaseOrder[] = snapshot.docs
           .map(d => ({ id: d.id, ...d.data() })) as PurchaseOrder[];
-        // Filter to only show approved/partially received orders
+        // Filter to show approved, ordered, and partially_received orders (On Air / In Transit)
         const incoming = orders.filter(po => 
-          po.status === 'approved' || po.status === 'partially_received'
+          po.status === 'approved' || 
+          po.status === 'ordered' || 
+          po.status === 'partially_received'
         );
         // Sort by createdAt
         incoming.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
@@ -317,14 +319,14 @@ export default function StorePage() {
 
     setSelectedOrder(order);
     // Initialize received items from order items
-    const items: GRNItem[] = order.items.map(item => ({
-      itemID: item.itemID,
-      itemName: item.itemName,
-      orderedQty: item.quantity,
-      receivedQty: item.quantity, // Default to full quantity
-      unit: item.unit,
-      unitPrice: item.unitPrice,
-      totalValue: item.quantity * item.unitPrice,
+    const items: GRNItem[] = (order.items || []).map(item => ({
+      itemID: item.itemID || '',
+      itemName: item.itemName || '',
+      orderedQty: item.quantity || 0,
+      receivedQty: item.quantity || 0, // Default to full quantity
+      unit: item.unit || '',
+      unitPrice: item.unitPrice || 0,
+      totalValue: (item.quantity || 0) * (item.unitPrice || 0),
       qualityStatus: 'pending' as const,
       remarks: ''
     }));
@@ -388,7 +390,7 @@ export default function StorePage() {
 
       // 4. Create GRN record (outside transaction)
       const totalValue = receivedItems.reduce((sum, item) => {
-        const orderItem = selectedOrder.items.find(i => i.itemID === item.itemID);
+        const orderItem = (selectedOrder.items || []).find(i => i.itemID === item.itemID);
         return sum + (item.receivedQty * (orderItem?.unitPrice || 0));
       }, 0);
 
@@ -408,8 +410,8 @@ export default function StorePage() {
         grnNumber: generateGRNNumber(),
         poID: selectedOrder.id,
         poNumber: selectedOrder.poNumber,
-        vendorId: selectedOrder.vendorDetails.id || '',
-        vendorName: selectedOrder.vendorDetails.name,
+        vendorId: selectedOrder.vendorDetails?.id || '',
+        vendorName: selectedOrder.vendorDetails?.name || 'Unknown Vendor',
         items: receivedItems.map(item => ({
           ...item,
           totalValue: item.receivedQty * item.unitPrice,
@@ -471,10 +473,11 @@ export default function StorePage() {
   // ==========================================
 
   const getStatusBadge = (status: POStatus) => {
-    const badges: Partial<Record<POStatus, { bg: string; text: string; label: string }>> = {
+    const badges: Partial<Record<POStatus, { bg: string; text: string; label: string; icon?: string }>> = {
       draft: { bg: 'bg-gray-500/20', text: 'text-gray-400', label: 'Draft' },
       pending_md_approval: { bg: 'bg-yellow-500/20', text: 'text-yellow-400', label: 'Pending MD' },
-      approved: { bg: 'bg-green-500/20', text: 'text-green-400', label: 'Ready to Receive' },
+      approved: { bg: 'bg-green-500/20', text: 'text-green-400', label: '✅ Ready to Receive', icon: '✅' },
+      ordered: { bg: 'bg-blue-500/20', text: 'text-blue-400', label: '✈️ On Air - In Transit', icon: '✈️' },
       rejected: { bg: 'bg-red-500/20', text: 'text-red-400', label: 'Rejected' },
       partially_received: { bg: 'bg-blue-500/20', text: 'text-blue-400', label: 'Partial' },
       received: { bg: 'bg-emerald-500/20', text: 'text-emerald-400', label: 'Received' },
@@ -580,16 +583,6 @@ export default function StorePage() {
                 <span>&ldquo;{dailyQuote}&rdquo;</span>
               </motion.div>
             </div>
-
-            {/* Right Side - Warehouse Icon */}
-            <motion.div 
-              className="hidden lg:flex items-center justify-center w-24 h-24 bg-gradient-to-br from-emerald-500/20 to-cyan-500/20 rounded-3xl border border-emerald-500/30"
-              initial={{ opacity: 0, scale: 0.8 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ delay: 0.4 }}
-            >
-              <Warehouse className="w-12 h-12 text-emerald-400" />
-            </motion.div>
           </div>
         </motion.header>
 
@@ -721,13 +714,36 @@ export default function StorePage() {
         {activeTab === 'incoming' && (
           <div>
             <div className="p-4 border-b border-white/10">
-              <h2 className="font-semibold flex items-center gap-2 text-white">
-                <Truck className="w-5 h-5 text-yellow-400" />
-                Incoming Purchase Orders
-              </h2>
-              <p className="text-xs text-zinc-500 mt-1">
-                Approved orders ready to receive. Click &ldquo;Receive&rdquo; to create GRN and update stock.
-              </p>
+              <div className="flex items-center justify-between flex-wrap gap-4">
+                <div>
+                  <h2 className="font-semibold flex items-center gap-2 text-white">
+                    <Truck className="w-5 h-5 text-yellow-400" />
+                    Incoming Purchase Orders
+                  </h2>
+                  <p className="text-xs text-zinc-500 mt-1">
+                    Track incoming stock from approved POs. EmpStore confirms receipt.
+                  </p>
+                </div>
+                
+                {/* Status Summary */}
+                <div className="flex items-center gap-3">
+                  <div className="px-3 py-1.5 rounded-xl bg-green-500/20 border border-green-500/30">
+                    <span className="text-green-400 text-sm font-medium">
+                      ✅ {incomingOrders.filter(o => o.status === 'approved').length} Ready
+                    </span>
+                  </div>
+                  <div className="px-3 py-1.5 rounded-xl bg-blue-500/20 border border-blue-500/30">
+                    <span className="text-blue-400 text-sm font-medium">
+                      ✈️ {incomingOrders.filter(o => o.status === 'ordered').length} On Air
+                    </span>
+                  </div>
+                  <div className="px-3 py-1.5 rounded-xl bg-amber-500/20 border border-amber-500/30">
+                    <span className="text-amber-400 text-sm font-medium">
+                      📦 {incomingOrders.filter(o => o.status === 'partially_received').length} Partial
+                    </span>
+                  </div>
+                </div>
+              </div>
             </div>
 
             {loading ? (
@@ -767,20 +783,20 @@ export default function StorePage() {
                         <div className="flex items-center gap-4 text-sm text-zinc-400">
                           <span className="flex items-center gap-1">
                             <Building2 className="w-4 h-4" />
-                            {order.vendorDetails.name}
+                            {order.vendorDetails?.name || 'Unknown Vendor'}
                           </span>
                           <span className="flex items-center gap-1">
                             <Package className="w-4 h-4" />
-                            {order.items.length} items
+                            {(order.items || []).length} items
                           </span>
                           <span className="flex items-center gap-1">
                             <IndianRupee className="w-4 h-4" />
-                            ₹{order.totalAmount.toLocaleString()}
+                            ₹{(order.totalAmount || 0).toLocaleString()}
                           </span>
                         </div>
                         {/* Items Preview */}
                         <div className="mt-2 flex flex-wrap gap-2">
-                          {order.items.slice(0, 3).map((item, idx) => (
+                          {(order.items || []).slice(0, 3).map((item, idx) => (
                             <span 
                               key={idx}
                               className="text-xs bg-white/10 px-2 py-1 rounded-lg text-zinc-300"
@@ -788,9 +804,9 @@ export default function StorePage() {
                               {item.itemName}: {item.quantity} {item.unit}
                             </span>
                           ))}
-                          {order.items.length > 3 && (
+                          {(order.items || []).length > 3 && (
                             <span className="text-xs text-zinc-500">
-                              +{order.items.length - 3} more
+                              +{(order.items || []).length - 3} more
                             </span>
                           )}
                         </div>
@@ -1053,20 +1069,20 @@ export default function StorePage() {
                   {goodsReceipts.map((grn) => (
                     <tr key={grn.id} className="hover:bg-white/5 transition-colors">
                       <td className="px-4 py-3">
-                        <span className="font-medium text-purple-400">{grn.grnNumber}</span>
+                        <span className="font-medium text-purple-400">{grn.grnNumber || ''}</span>
                       </td>
                       <td className="px-4 py-3">
-                        <span className="text-blue-400">{grn.poNumber}</span>
+                        <span className="text-blue-400">{grn.poNumber || ''}</span>
                       </td>
-                      <td className="px-4 py-3 text-sm text-white">{grn.vendorName}</td>
-                      <td className="px-4 py-3 text-sm text-zinc-400">{grn.invoiceNumber}</td>
+                      <td className="px-4 py-3 text-sm text-white">{grn.vendorName || 'Unknown'}</td>
+                      <td className="px-4 py-3 text-sm text-zinc-400">{grn.invoiceNumber || ''}</td>
                       <td className="px-4 py-3 text-right font-semibold text-green-400">
-                        ₹{grn.totalReceivedValue.toLocaleString()}
+                        ₹{(grn.totalReceivedValue || 0).toLocaleString()}
                       </td>
                       <td className="px-4 py-3 text-sm text-zinc-400">
-                        <div className="text-white">{grn.receivedBy}</div>
+                        <div className="text-white">{grn.receivedByName || grn.receivedBy || ''}</div>
                         <div className="text-xs">
-                          {new Date(grn.receivedAt).toLocaleDateString()}
+                          {grn.receivedAt ? new Date(grn.receivedAt).toLocaleDateString() : ''}
                         </div>
                       </td>
                     </tr>
@@ -1171,7 +1187,7 @@ export default function StorePage() {
                   Receive Goods - {selectedOrder.poNumber}
                 </h2>
                 <p className="text-sm text-zinc-400 mt-1">
-                  Vendor: {selectedOrder.vendorDetails.name}
+                  Vendor: {selectedOrder.vendorDetails?.name || 'Unknown Vendor'}
                 </p>
               </div>
 
@@ -1317,8 +1333,8 @@ export default function StorePage() {
                   <h3 className="font-medium mb-2 flex items-center gap-2 text-white">
                     <Building2 className="w-4 h-4 text-blue-400" /> Vendor
                   </h3>
-                  <p className="text-lg text-white">{selectedOrder.vendorDetails.name}</p>
-                  <p className="text-sm text-zinc-400">{selectedOrder.vendorDetails.city}</p>
+                  <p className="text-lg text-white">{selectedOrder.vendorDetails?.name || 'Unknown Vendor'}</p>
+                  <p className="text-sm text-zinc-400">{selectedOrder.vendorDetails?.city || ''}</p>
                 </div>
 
                 <div>
@@ -1334,12 +1350,12 @@ export default function StorePage() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-white/5">
-                      {selectedOrder.items.map((item, idx) => (
+                      {(selectedOrder.items || []).map((item, idx) => (
                         <tr key={idx} className="hover:bg-white/5">
-                          <td className="px-3 py-2.5 text-white">{item.itemName}</td>
-                          <td className="px-3 py-2.5 text-right text-zinc-300">{item.quantity} {item.unit}</td>
-                          <td className="px-3 py-2.5 text-right text-zinc-300">₹{item.unitPrice.toLocaleString()}</td>
-                          <td className="px-3 py-2.5 text-right text-white">₹{item.totalPrice.toLocaleString()}</td>
+                          <td className="px-3 py-2.5 text-white">{item.itemName || ''}</td>
+                          <td className="px-3 py-2.5 text-right text-zinc-300">{item.quantity || 0} {item.unit || ''}</td>
+                          <td className="px-3 py-2.5 text-right text-zinc-300">₹{(item.unitPrice || 0).toLocaleString()}</td>
+                          <td className="px-3 py-2.5 text-right text-white">₹{(item.totalPrice || 0).toLocaleString()}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -1347,7 +1363,7 @@ export default function StorePage() {
                       <tr>
                         <td colSpan={3} className="px-3 py-3 text-right font-bold text-white">Total:</td>
                         <td className="px-3 py-3 text-right font-bold text-green-400">
-                          ₹{selectedOrder.totalAmount.toLocaleString()}
+                          ₹{(selectedOrder.totalAmount || 0).toLocaleString()}
                         </td>
                       </tr>
                     </tfoot>

@@ -4,18 +4,64 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  Shield, Users, Database, Activity, Server, 
-  Lock, AlertTriangle, FileText, CheckCircle, 
+  Shield, Users, Activity, Server, 
   Search, Trash2, RotateCcw, UserPlus, 
-  BarChart3, LogOut, Bell, Settings, Eye, EyeOff,
-  TrendingUp, Clock, HardDrive, Zap, RefreshCw,
-  Download, Upload, MoreVertical, Edit, Check, X
+  BarChart3, LogOut, Settings,
+  TrendingUp, Clock, HardDrive, RefreshCw,
+  Download, X,
+  LucideIcon
 } from 'lucide-react';
+
+// KPI Card Component - defined outside component to avoid recreation on each render
+interface KPICardProps {
+  label: string;
+  value: string | number;
+  icon: LucideIcon;
+  color: string;
+  trend?: string;
+}
+
+const KPICard = ({ label, value, icon: Icon, color, trend }: KPICardProps) => (
+  <motion.div 
+    initial={{ opacity: 0, y: 20 }} 
+    animate={{ opacity: 1, y: 0 }} 
+    className="backdrop-blur-xl bg-gradient-to-br from-white/10 to-white/5 border border-white/10 rounded-2xl p-6 shadow-2xl relative overflow-hidden group hover:border-white/20 transition-all"
+  >
+    <div className={`absolute top-0 right-0 w-40 h-40 rounded-full blur-3xl -mr-20 -mt-20 opacity-10 group-hover:opacity-20 transition-opacity ${color}`} />
+    <div className="relative z-10">
+      <div className="flex items-start justify-between mb-4">
+        <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${color.replace('bg', 'bg')} bg-opacity-20 border border-white/10`}>
+          <Icon className={`w-6 h-6 ${color.replace('bg', 'text')}`} />
+        </div>
+        {trend && <span className="text-green-400 text-xs font-bold flex items-center gap-1"><TrendingUp className="w-3 h-3" /> {trend}</span>}
+      </div>
+      <h3 className="text-zinc-400 text-sm font-medium mb-2">{label}</h3>
+      <div className="text-3xl font-black text-white">{value}</div>
+    </div>
+  </motion.div>
+);
+
+// User interface for proper typing
+interface User {
+  id: number;
+  name: string;
+  email: string;
+  role: string;
+  status: string;
+}
+
+interface LogEntry {
+  id: number;
+  action: string;
+  user: string;
+  timestamp: string;
+  status: string;
+}
 
 export default function AdminDashboard() {
   const router = useRouter();
   const [isMounted, setIsMounted] = useState(false);
-  const [users, setUsers] = useState<any[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
   const [stats, setStats] = useState({ total: 0, active: 0, admins: 0, inactive: 0 });
   const [searchTerm, setSearchTerm] = useState('');
   const [filterRole, setFilterRole] = useState('all');
@@ -28,14 +74,13 @@ export default function AdminDashboard() {
     apiRequests: 15420,
     errorRate: 0.2
   });
-  const [logs, setLogs] = useState<any[]>([]);
+  const [logs, setLogs] = useState<LogEntry[]>([]);
   const [showConfirm, setShowConfirm] = useState<string | null>(null);
-  const [selectedUser, setSelectedUser] = useState<any>(null);
+  const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   useEffect(() => {
     setIsMounted(true);
-    
     // Load Users from localStorage
     try {
       const savedUsers = JSON.parse(localStorage.getItem('erp_users') || "[]");
@@ -44,9 +89,9 @@ export default function AdminDashboard() {
       // Calculate Stats
       setStats({
         total: savedUsers.length,
-        active: savedUsers.filter((u: any) => u.status === 'Active').length,
-        admins: savedUsers.filter((u: any) => u.role === 'admin' || u.role === 'md').length,
-        inactive: savedUsers.filter((u: any) => u.status !== 'Active').length
+        active: savedUsers.filter((u: User) => u.status === 'Active').length,
+        admins: savedUsers.filter((u: User) => u.role === 'admin' || u.role === 'md').length,
+        inactive: savedUsers.filter((u: User) => u.status !== 'Active').length
       });
 
       // Load logs
@@ -118,26 +163,6 @@ export default function AdminDashboard() {
   };
 
   if (!isMounted) return null;
-
-  const KPICard = ({ label, value, icon: Icon, color, trend }: any) => (
-    <motion.div 
-      initial={{ opacity: 0, y: 20 }} 
-      animate={{ opacity: 1, y: 0 }} 
-      className="backdrop-blur-xl bg-gradient-to-br from-white/10 to-white/5 border border-white/10 rounded-2xl p-6 shadow-2xl relative overflow-hidden group hover:border-white/20 transition-all"
-    >
-      <div className={`absolute top-0 right-0 w-40 h-40 rounded-full blur-3xl -mr-20 -mt-20 opacity-10 group-hover:opacity-20 transition-opacity ${color}`} />
-      <div className="relative z-10">
-        <div className="flex items-start justify-between mb-4">
-          <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${color.replace('bg', 'bg')} bg-opacity-20 border border-white/10`}>
-            <Icon className={`w-6 h-6 ${color.replace('bg', 'text')}`} />
-          </div>
-          {trend && <span className="text-green-400 text-xs font-bold flex items-center gap-1"><TrendingUp className="w-3 h-3" /> {trend}</span>}
-        </div>
-        <h3 className="text-zinc-400 text-sm font-medium mb-2">{label}</h3>
-        <div className="text-3xl font-black text-white">{value}</div>
-      </div>
-    </motion.div>
-  );
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white p-6 md:p-8">
@@ -446,9 +471,9 @@ export default function AdminDashboard() {
                     const userId = parseInt(showConfirm.split('-')[1]);
                     const user = users.find(u => u.id === userId);
                     if (showConfirm.startsWith('delete')) {
-                      handleDeleteUser(userId, user?.name);
+                      handleDeleteUser(userId, user?.name || 'Unknown');
                     } else {
-                      handleResetPassword(userId, user?.name);
+                      handleResetPassword(userId, user?.name || 'Unknown');
                     }
                   }}
                   className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg font-bold transition-all"
@@ -465,7 +490,13 @@ export default function AdminDashboard() {
 }
 
 // Helper Component
-const StatBar = ({ label, value, color }: any) => (
+interface StatBarProps {
+  label: string;
+  value: number;
+  color: string;
+}
+
+const StatBar = ({ label, value, color }: StatBarProps) => (
   <div>
     <div className="flex justify-between mb-2">
       <span className="text-xs font-bold text-zinc-400">{label}</span>

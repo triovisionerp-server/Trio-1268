@@ -87,9 +87,9 @@ export default function ProjectManagerDashboard() {
     total: 0, completed: 0, inProgress: 0, efficiency: 0,
     delayed: 0, onHold: 0, pending: 0, critical: 0, producedParts: 0, totalParts: 0
   });
-  const [chartData, setChartData] = useState<any[]>([]);
-  const [statusChart, setStatusChart] = useState<any[]>([]);
-  const [weeklyData, setWeeklyData] = useState<any[]>([]);
+  const [chartData, setChartData] = useState<{ name: string; Target: number; Actual: number; completion: number }[]>([]);
+  const [statusChart, setStatusChart] = useState<{ name: string; value: number; color: string }[]>([]);
+  const [weeklyData, setWeeklyData] = useState<{ day: string; completed: number }[]>([]);
   
   // UI State
   const [searchTerm, setSearchTerm] = useState('');
@@ -110,6 +110,58 @@ export default function ProjectManagerDashboard() {
   const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // ==========================================
+  // ANALYTICS - defined before useEffect
+  // ==========================================
+  const runAnalytics = (dataset: Project[]) => {
+    const valid = dataset.filter(p => p.projectCode);
+    
+    const total = valid.length;
+    const completed = valid.filter(p => p.status === 'Completed' || (p.percentCompleted || 0) >= 100).length;
+    const inProgress = valid.filter(p => p.status === 'In Progress' || ((p.percentCompleted || 0) > 0 && (p.percentCompleted || 0) < 100)).length;
+    const delayed = valid.filter(p => p.status === 'Delayed').length;
+    const onHold = valid.filter(p => p.status === 'On Hold').length;
+    const pending = valid.filter(p => p.status === 'Pending' || (!p.status && (p.percentCompleted || 0) === 0)).length;
+    const critical = valid.filter(p => p.priority === 'critical').length;
+    
+    const totalPercent = valid.reduce((acc, curr) => acc + (curr.percentCompleted || 0), 0);
+    const efficiency = total > 0 ? Math.round(totalPercent / total) : 0;
+    
+    const producedParts = valid.reduce((acc, curr) => acc + (parseInt(String(curr.totalPartsProduced)) || 0), 0);
+    const totalPartsCount = valid.reduce((acc, curr) => acc + (parseInt(String(curr.totalParts)) || 0), 0);
+
+    setStats({ total, completed, inProgress, efficiency, delayed, onHold, pending, critical, producedParts, totalParts: totalPartsCount });
+
+    // Bar Chart Data
+    const barData = valid.slice(0, 8).map(p => ({
+      name: p.projectCode || '',
+      Target: parseFloat(String(p.totalParts)) || 0,
+      Actual: parseFloat(String(p.totalPartsProduced)) || 0,
+      completion: p.percentCompleted || 0
+    }));
+    setChartData(barData);
+
+    // Pie Chart Data
+    setStatusChart([
+      { name: 'Completed', value: completed, color: '#10b981' },
+      { name: 'In Progress', value: inProgress, color: '#3b82f6' },
+      { name: 'Pending', value: pending, color: '#f59e0b' },
+      { name: 'Delayed', value: delayed, color: '#ef4444' },
+      { name: 'On Hold', value: onHold, color: '#8b5cf6' }
+    ]);
+
+    // Weekly Progress (fixed values to avoid impure Math.random)
+    setWeeklyData([
+      { day: 'Mon', completed: 12 },
+      { day: 'Tue', completed: 18 },
+      { day: 'Wed', completed: 15 },
+      { day: 'Thu', completed: 22 },
+      { day: 'Fri', completed: 25 },
+      { day: 'Sat', completed: 8 },
+      { day: 'Sun', completed: 5 },
+    ]);
+  };
+
+  // ==========================================
   // DATA LOADING
   // ==========================================
   useEffect(() => {
@@ -126,73 +178,21 @@ export default function ProjectManagerDashboard() {
         assignedTeam: ''
       }));
       setData(initial as Project[]);
-      runAnalytics(initial);
+      runAnalytics(initial as Project[]);
     }
   }, []);
 
   // ==========================================
-  // ANALYTICS
-  // ==========================================
-  const runAnalytics = (dataset: any[]) => {
-    const valid = dataset.filter(p => p.projectCode);
-    
-    const total = valid.length;
-    const completed = valid.filter(p => p.status === 'Completed' || (p.percentCompleted || 0) >= 100).length;
-    const inProgress = valid.filter(p => p.status === 'In Progress' || ((p.percentCompleted || 0) > 0 && (p.percentCompleted || 0) < 100)).length;
-    const delayed = valid.filter(p => p.status === 'Delayed').length;
-    const onHold = valid.filter(p => p.status === 'On Hold').length;
-    const pending = valid.filter(p => p.status === 'Pending' || (!p.status && (p.percentCompleted || 0) === 0)).length;
-    const critical = valid.filter(p => p.priority === 'critical').length;
-    
-    const totalPercent = valid.reduce((acc, curr) => acc + (curr.percentCompleted || 0), 0);
-    const efficiency = total > 0 ? Math.round(totalPercent / total) : 0;
-    
-    const producedParts = valid.reduce((acc, curr) => acc + (parseInt(curr.totalPartsProduced) || 0), 0);
-    const totalParts = valid.reduce((acc, curr) => acc + (parseInt(curr.totalParts) || 0), 0);
-
-    setStats({ total, completed, inProgress, efficiency, delayed, onHold, pending, critical, producedParts, totalParts });
-
-    // Bar Chart Data
-    const barData = valid.slice(0, 8).map(p => ({
-      name: p.projectCode,
-      Target: parseFloat(p.totalParts) || 0,
-      Actual: parseFloat(p.totalPartsProduced) || 0,
-      completion: p.percentCompleted || 0
-    }));
-    setChartData(barData);
-
-    // Pie Chart Data
-    setStatusChart([
-      { name: 'Completed', value: completed, color: '#10b981' },
-      { name: 'In Progress', value: inProgress, color: '#3b82f6' },
-      { name: 'Pending', value: pending, color: '#f59e0b' },
-      { name: 'Delayed', value: delayed, color: '#ef4444' },
-      { name: 'On Hold', value: onHold, color: '#8b5cf6' }
-    ]);
-
-    // Weekly Progress (mock based on data)
-    setWeeklyData([
-      { day: 'Mon', completed: Math.floor(Math.random() * 20) + 5 },
-      { day: 'Tue', completed: Math.floor(Math.random() * 20) + 8 },
-      { day: 'Wed', completed: Math.floor(Math.random() * 20) + 10 },
-      { day: 'Thu', completed: Math.floor(Math.random() * 20) + 12 },
-      { day: 'Fri', completed: Math.floor(Math.random() * 20) + 15 },
-      { day: 'Sat', completed: Math.floor(Math.random() * 10) + 3 },
-      { day: 'Sun', completed: Math.floor(Math.random() * 8) + 2 },
-    ]);
-  };
-
-  // ==========================================
   // DATA OPERATIONS
   // ==========================================
-  const handleCellChange = (index: number, field: string, value: any) => {
+  const handleCellChange = (index: number, field: string, value: string | number) => {
     const updated = [...data];
     if (!updated[index]) updated[index] = { id: Date.now() } as Project;
-    (updated[index] as any)[field] = value;
+    (updated[index] as Record<string, unknown>)[field] = value;
 
     if (field === 'totalParts' || field === 'totalPartsProduced') {
-      const total = parseFloat(updated[index].totalParts as any) || 0;
-      const produced = parseFloat(updated[index].totalPartsProduced as any) || 0;
+      const total = parseFloat(String(updated[index].totalParts)) || 0;
+      const produced = parseFloat(String(updated[index].totalPartsProduced)) || 0;
       const percent = total > 0 ? Math.round((produced / total) * 100) : 0;
       
       updated[index].percentCompleted = percent;

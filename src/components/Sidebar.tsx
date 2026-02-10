@@ -7,7 +7,6 @@ import { useState, useEffect, useMemo } from 'react';
 import { 
   LayoutDashboard, 
   ShoppingCart, 
-  Layers, 
   Factory, 
   PackageCheck, 
   Truck, 
@@ -16,12 +15,11 @@ import {
   Warehouse,
   ClipboardList,
   Users,
-  FileText
+  FileText,
+  Calendar,
+  BarChart3,
+  Zap
 } from 'lucide-react';
-import { auth, db } from '@/lib/firebase/client';
-import { signOut } from 'firebase/auth';
-import { collection, query, where, onSnapshot } from 'firebase/firestore';
-import { COLLECTIONS } from '@/types/purchase';
 
 // ==========================================
 // ROLE-BASED MENU CONFIGURATION
@@ -39,10 +37,13 @@ type MenuItem = {
 const ALL_MENU_ITEMS: MenuItem[] = [
   // MD sees everything - top-level overview
   { name: 'MD Dashboard', path: '/md', icon: LayoutDashboard, showNotification: true, roles: ['md'] },
+  { name: 'Analytics', path: '/md/analytics', icon: BarChart3, roles: ['md'] },
+  { name: 'Calendar', path: '/calendar', icon: Calendar, roles: ['md', 'pm', 'project_manager', 'supervisor', 'hr', 'admin', 'manager'] },
   { name: 'Tooling Overview', path: '/md/tooling', icon: Cog, roles: ['md'] },
   
   // Project Manager
   { name: 'PM Dashboard', path: '/pm', icon: ClipboardList, roles: ['pm', 'project_manager'] },
+  { name: 'PM Ultra', path: '/pm/ultra', icon: Zap, roles: ['pm', 'project_manager'] },
   
   // Store/Inventory
   { name: 'Store', path: '/store', icon: Warehouse, roles: ['md', 'store', 'store_manager', 'inventory'] },
@@ -66,6 +67,14 @@ const ALL_MENU_ITEMS: MenuItem[] = [
 // Helper to get user role from localStorage
 function getUserRole(): string {
   if (typeof window === 'undefined') return '';
+  
+  // Try reading from currentUserRole first (direct value)
+  const directRole = localStorage.getItem('currentUserRole');
+  if (directRole) {
+    return directRole.toLowerCase().trim();
+  }
+  
+  // Fallback to parsing currentUser JSON
   const storedUser = localStorage.getItem('currentUser');
   if (storedUser) {
     try {
@@ -75,6 +84,7 @@ function getUserRole(): string {
       return '';
     }
   }
+  
   return '';
 }
 
@@ -84,9 +94,20 @@ export default function Sidebar() {
   const [pendingApprovals, setPendingApprovals] = useState(0);
   const [userRole, setUserRole] = useState('');
 
-  // Get user role on mount
+  // Get user role on mount and when window regains focus
   useEffect(() => {
-    setUserRole(getUserRole());
+    const loadRole = () => {
+      const role = getUserRole();
+      if (role) {
+        setUserRole(role);
+      }
+    };
+    
+    loadRole();
+    
+    // Reload role when window regains focus (after login redirect)
+    window.addEventListener('focus', loadRole);
+    return () => window.removeEventListener('focus', loadRole);
   }, []);
 
   // Filter menu based on user role
@@ -95,28 +116,61 @@ export default function Sidebar() {
     return ALL_MENU_ITEMS.filter(item => item.roles.includes(userRole));
   }, [userRole]);
 
-  // Listen for pending MD approvals
+  // Lazy load pending approvals listener only for MD role
   useEffect(() => {
-    const q = query(
-      collection(db, COLLECTIONS.PURCHASE_ORDERS),
-      where('status', '==', 'pending_md_approval')
-    );
+    if (userRole !== 'md') return;
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      setPendingApprovals(snapshot.docs.length);
-    }, (error) => {
-      console.error('Error listening to pending approvals:', error);
-    });
+    let unsubscribe: (() => void) | undefined;
 
-    return () => unsubscribe();
-  }, []);
+    // Dynamic Firebase import
+    (async () => {
+      try {
+        const [{ db }, { collection, query, where, onSnapshot }] = await Promise.all([
+          import('@/lib/firebase/client'),
+          import('firebase/firestore')
+        ]);
+
+        const { COLLECTIONS } = await import('@/types/purchase');
+
+        const q = query(
+          collection(db, COLLECTIONS.PURCHASE_ORDERS),
+          where('status', '==', 'pending_md_approval')
+        );
+
+        unsubscribe = onSnapshot(q, (snapshot) => {
+          setPendingApprovals(snapshot.docs.length);
+        }, (error) => {
+          console.error('Error listening to pending approvals:', error);
+        });
+      } catch (error) {
+        console.error('Failed to load pending approvals:', error);
+      }
+    })();
+
+    return () => unsubscribe?.();
+  }, [userRole]);
 
   const handleLogout = async () => {
     try {
+      // Dynamic Firebase auth import only when needed
+      const [{ auth }, { signOut }] = await Promise.all([
+        import('@/lib/firebase/client'),
+        import('firebase/auth')
+      ]);
+      
       await signOut(auth);
+      
+      // Clear local storage
+      localStorage.removeItem('currentUser');
+      localStorage.removeItem('currentUserName');
+      localStorage.removeItem('currentUserRole');
+      
       router.push('/login');
     } catch (error) {
       console.error("Logout failed", error);
+      // Force logout anyway
+      localStorage.clear();
+      router.push('/login');
     }
   };
 
@@ -126,13 +180,13 @@ export default function Sidebar() {
   };
 
   return (
-    <div className="w-64 h-screen flex flex-col fixed left-0 top-0 z-50 bg-zinc-950/80 backdrop-blur-xl border-r border-white/10">
+    <div className="w-64 h-screen flex flex-col fixed left-0 top-0 z-50 bg-zinc-950/95 border-r border-white/10">
       {/* Grid Background */}
       <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:2rem_2rem] pointer-events-none" />
       
-      {/* Glow Effect */}
-      <div className="absolute top-0 left-0 w-32 h-32 bg-cyan-500/5 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute bottom-0 right-0 w-32 h-32 bg-blue-500/5 rounded-full blur-3xl pointer-events-none" />
+      {/* Glow Effect - simplified */}
+      <div className="absolute top-0 left-0 w-32 h-32 bg-cyan-500/3 rounded-full pointer-events-none" />
+      <div className="absolute bottom-0 right-0 w-32 h-32 bg-blue-500/3 rounded-full pointer-events-none" />
       
       {/* Header */}
       <div className="relative h-16 flex items-center px-5 border-b border-white/10">

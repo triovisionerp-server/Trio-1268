@@ -1,9 +1,7 @@
 'use client';
 
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { User, onAuthStateChanged, signInWithEmailAndPassword, signOut as firebaseSignOut, createUserWithEmailAndPassword } from 'firebase/auth';
-import { doc, getDoc, setDoc, updateDoc, collection, query, where, getDocs } from 'firebase/firestore';
-import { auth, db } from '@/lib/firebase/client';
+import type { User } from 'firebase/auth';
 import { UserProfile, UserRole, canAccessRoute, USER_COLLECTIONS } from '@/types/user';
 import { useRouter, usePathname } from 'next/navigation';
 
@@ -57,51 +55,66 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  // Listen to auth state changes
+  // Listen to auth state changes with dynamic Firebase import
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      setUser(firebaseUser);
-      
-      if (firebaseUser) {
-        // Fetch user profile from Firestore
-        try {
-          const userDoc = await getDoc(doc(db, USER_COLLECTIONS.USERS, firebaseUser.uid));
+    let unsubscribe: (() => void) | undefined;
+
+    (async () => {
+      try {
+        const [{ auth, db }, { onAuthStateChanged, signOut: firebaseSignOut }, { doc, getDoc, updateDoc }] = await Promise.all([
+          import('@/lib/firebase/client'),
+          import('firebase/auth'),
+          import('firebase/firestore')
+        ]);
+
+        unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+          setUser(firebaseUser);
           
-          if (userDoc.exists()) {
-            const profile = userDoc.data() as UserProfile;
-            
-            // Check if user is active
-            if (!profile.isActive) {
-              setError('Your account has been deactivated. Please contact admin.');
-              await firebaseSignOut(auth);
-              setUserProfile(null);
-              router.push('/login');
-            } else {
-              setUserProfile(profile);
+          if (firebaseUser) {
+            // Fetch user profile from Firestore
+            try {
+              const userDoc = await getDoc(doc(db, USER_COLLECTIONS.USERS, firebaseUser.uid));
               
-              // Update last login
-              await updateDoc(doc(db, USER_COLLECTIONS.USERS, firebaseUser.uid), {
-                lastLogin: new Date().toISOString(),
-              });
+              if (userDoc.exists()) {
+                const profile = userDoc.data() as UserProfile;
+                
+                // Check if user is active
+                if (!profile.isActive) {
+                  setError('Your account has been deactivated. Please contact admin.');
+                  await firebaseSignOut(auth);
+                  setUserProfile(null);
+                  router.push('/login');
+                } else {
+                  setUserProfile(profile);
+                  
+                  // Update last login
+                  await updateDoc(doc(db, USER_COLLECTIONS.USERS, firebaseUser.uid), {
+                    lastLogin: new Date().toISOString(),
+                  });
+                }
+              } else {
+                // No profile found - create a basic one
+                console.warn('No user profile found for:', firebaseUser.uid);
+                setUserProfile(null);
+              }
+            } catch (err) {
+              console.error('Error fetching user profile:', err);
+              setError('Failed to load user profile');
             }
           } else {
-            // No profile found - create a basic one
-            console.warn('No user profile found for:', firebaseUser.uid);
             setUserProfile(null);
           }
-        } catch (err) {
-          console.error('Error fetching user profile:', err);
-          setError('Failed to load user profile');
-        }
-      } else {
-        setUserProfile(null);
+          
+          setLoading(false);
+        });
+      } catch (err) {
+        console.error('Failed to initialize auth:', err);
+        setLoading(false);
       }
-      
-      setLoading(false);
-    });
+    })();
 
-    return () => unsubscribe();
-  }, [router]);
+    return () => unsubscribe?.();
+  }, [router, pathname]);
 
   // Route protection - Modified to support localStorage auth
   useEffect(() => {
@@ -127,6 +140,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setLoading(true);
     
     try {
+      // Dynamic Firebase imports
+      const [{ auth, db }, { signInWithEmailAndPassword }, { collection, query, where, getDocs }] = await Promise.all([
+        import('@/lib/firebase/client'),
+        import('firebase/auth'),
+        import('firebase/firestore')
+      ]);
+
       // First check if user exists in Firestore by email
       const usersRef = collection(db, USER_COLLECTIONS.USERS);
       const q = query(usersRef, where('email', '==', email.toLowerCase()));
@@ -169,6 +189,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Sign out
   const signOut = async () => {
     try {
+      const [{ auth }, { signOut: firebaseSignOut }] = await Promise.all([
+        import('@/lib/firebase/client'),
+        import('firebase/auth')
+      ]);
+      
       await firebaseSignOut(auth);
       setUserProfile(null);
       router.push('/login');
@@ -184,6 +209,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     profile: Partial<UserProfile>
   ): Promise<{ success: boolean; error?: string }> => {
     try {
+      const [{ auth, db }, { createUserWithEmailAndPassword }, { doc, setDoc }] = await Promise.all([
+        import('@/lib/firebase/client'),
+        import('firebase/auth'),
+        import('firebase/firestore')
+      ]);
+
       // Create Firebase Auth user
       const credential = await createUserWithEmailAndPassword(auth, email, password);
       
@@ -216,6 +247,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!user) return;
     
     try {
+      const [{ db }, { doc, updateDoc }] = await Promise.all([
+        import('@/lib/firebase/client'),
+        import('firebase/firestore')
+      ]);
+
       await updateDoc(doc(db, USER_COLLECTIONS.USERS, user.uid), {
         ...updates,
         updatedAt: new Date().toISOString(),

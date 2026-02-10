@@ -3,13 +3,13 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  AlertTriangle, AlertCircle, XCircle, Bell, BellOff, Check,
-  Clock, RefreshCw, Filter, Search, Download, Settings,
-  ChevronDown, ChevronRight, Package, Truck, ShoppingCart,
+  AlertTriangle, AlertCircle, XCircle, Bell, Check,
+  Clock, RefreshCw, Search, Download, Settings,
+  ChevronDown, ChevronRight, Package, ShoppingCart,
   Eye, EyeOff, Volume2, VolumeX, Mail, MailX
 } from 'lucide-react';
 import { db } from '@/lib/firebase/client';
-import { collection, onSnapshot, query, orderBy, where, getDocs } from 'firebase/firestore';
+import { collection, getDocs } from 'firebase/firestore';
 import { stockAlertService } from '@/lib/services/erp-services';
 import type { StockAlert, AlertLevel, AlertStatus } from '@/types/erp-extended';
 
@@ -149,6 +149,7 @@ function AlertCard({ alert, onAcknowledge, onSnooze, onCreatePO, expanded, onTog
               >
                 <Clock className="w-4 h-4" />
                 Snooze 4h
+                
               </button>
             </>
           )}

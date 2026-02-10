@@ -1,25 +1,35 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   ClipboardList, Calendar, User, Settings, Save, 
   CheckCircle, Package, Layers, FileText, ArrowRight, Calculator 
 } from 'lucide-react';
+import { addDoc, collection } from 'firebase/firestore';
+import { db } from '@/lib/firebase/client';
+import { useAuthStore } from '@/lib/stores/useAuthStore';
+import { toast } from '@/lib/toast';
+import Link from 'next/link';
 
 // --- CONFIGURATION ---
 const PROCESS_OPTIONS = ['Hand Layup', 'Infusion', 'RTM', 'Spray Up'];
 const DELIVERABLES = ['Master Pattern', 'Direct Mould', 'Production Part'];
 const MATERIALS = ['PU Block', 'PS Foam', 'MDF', 'Wood'];
 
+// Generate document number - using timestamp for uniqueness
+const generateDocNo = () => `PSS-${Date.now().toString().slice(-4)}`;
+
 export default function CustomerProjectForm() {
   const router = useRouter();
+  const { user, initializeUser } = useAuthStore();
   const [isSubmitted, setIsSubmitted] = useState(false);
+  const docNoRef = useRef(generateDocNo());
   
   // Form State (Matches your PSS requirements)
   const [formData, setFormData] = useState({
-    docNo: `PSS-${Math.floor(Math.random() * 10000)}`,
+    docNo: '',
     date: new Date().toISOString().split('T')[0],
     customerName: '',
     projectName: '',
@@ -29,8 +39,22 @@ export default function CustomerProjectForm() {
     patternMaterial: '',
     deliverables: 'Production Part',
     process: 'Hand Layup',
+    description: '',
+    quantity: 1,
+    targetCost: 0,
+    paymentTerms: '',
     dimensions: { length: 0, width: 0, sqm: 0 }
   });
+
+  // Initialize user from localStorage on mount
+  useEffect(() => {
+    initializeUser();
+  }, [initializeUser]);
+
+  // Initialize docNo on mount to avoid hydration mismatch
+  useEffect(() => {
+    setFormData(prev => ({ ...prev, docNo: docNoRef.current }));
+  }, []);
 
   // --- AUTO-CALCULATE SQM ---
   useEffect(() => {
@@ -38,65 +62,51 @@ export default function CustomerProjectForm() {
     setFormData(prev => ({ ...prev, dimensions: { ...prev.dimensions, sqm } }));
   }, [formData.dimensions.length, formData.dimensions.width]);
 
-  // --- SUBMIT HANDLER (The "Auto-BOM" Engine) ---
-  const handleSubmit = () => {
+  // --- SUBMIT HANDLER (Save to Firebase for PM to review) ---
+  const handleSubmit = async () => {
     if (!formData.customerName || !formData.projectName || formData.dimensions.sqm <= 0) {
         alert("Please fill in Customer Name, Project Name, and Dimensions.");
         return;
     }
 
-    // 1. Calculate BOM based on Norms (The Math)
-    const area = formData.dimensions.sqm;
-    const resin = (area * 1.5).toFixed(1); // 1.5kg/sqm
-    const gelcoat = (area * 0.6).toFixed(1); // 0.6kg/sqm
-    const fiber = (area * 2.2).toFixed(1); // 2.2kg/sqm
-    const manpower = Math.ceil(area / 5); // 1 man per 5 sqm
-
-    // 2. Create the Project Object
-    const newProject = {
-        id: Date.now(),
-        projectCode: formData.projectNumber || `PRJ-${Math.floor(Math.random()*1000)}`,
-        projectDescription: formData.projectName,
-        customer: formData.customerName,
-        
-        // Production Data
-        moldSeries: '32', // Default
-        totalMolds: 1, // Default
-        targetPartsCompletion: 1, // Default
-        sqmPerPart: area,
-        
-        // Dates
+    try {
+      // Save customer requirement to Firebase for PM to review
+      const customerRequirement = {
+        docNo: formData.docNo,
+        date: formData.date,
+        customerName: formData.customerName,
+        customerEmail: user?.email || 'unknown',
+        projectName: formData.projectName,
+        projectNumber: formData.projectNumber || `PRJ-${Math.floor(Math.random()*1000)}`,
         startDate: formData.startDate,
-        targetCompletionDate: formData.deliveryDate,
-        
-        // The Auto-BOM
-        ebom: {
-            resin: resin,
-            gelcoat: gelcoat,
-            fiber: fiber,
-            manpower: manpower
-        },
-        
-        // Meta
-        status: 'Pending',
+        deliveryDate: formData.deliveryDate,
+        originalDeliveryDate: formData.deliveryDate, // Track original date for delay calculations
+        patternMaterial: formData.patternMaterial,
+        deliverables: formData.deliverables,
+        process: formData.process,
+        description: formData.description || `Area: ${formData.dimensions.sqm} sqm (${formData.dimensions.length}m × ${formData.dimensions.width}m)`,
+        quantity: formData.quantity,
+        targetCost: formData.targetCost,
+        paymentTerms: formData.paymentTerms,
+        status: 'Customer Requirements', // Initial status
         progress: 0,
-        createdDate: new Date().toISOString(),
-        specs: {
-            process: formData.process,
-            material: formData.patternMaterial,
-            deliverable: formData.deliverables
-        }
-    };
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        
+        // Additional metadata
+        dimensions: formData.dimensions
+      };
 
-    // 3. Save to "Server" (LocalStorage)
-    const currentBoms = JSON.parse(localStorage.getItem('boms') || "[]");
-    localStorage.setItem('boms', JSON.stringify([newProject, ...currentBoms]));
-
-    // 4. Show Success
-    setIsSubmitted(true);
-    
-    // Optional: Auto-redirect to PM page after 2s if you are testing flow
-    // setTimeout(() => router.push('/pm'), 2000);
+      await addDoc(collection(db, 'customer_requirements'), customerRequirement);
+      
+      // Show success notification
+      toast.success('✅ Project requirement submitted successfully! PM team has been notified.');
+      
+      setIsSubmitted(true);
+    } catch (error) {
+      console.error('Error saving requirement:', error);
+      toast.error('❌ Failed to submit. Please try again.');
+    }
   };
 
   if (isSubmitted) {
@@ -110,10 +120,15 @@ export default function CustomerProjectForm() {
                       <CheckCircle className="w-10 h-10 text-green-400" />
                   </div>
                   <h2 className="text-3xl font-bold mb-2">Spec Sheet Submitted!</h2>
-                  <p className="text-zinc-400 mb-8">Project <strong>{formData.projectName}</strong> has been sent to the Project Manager with an auto-generated BOM.</p>
-                  <button onClick={() => setIsSubmitted(false)} className="px-8 py-3 bg-white text-black font-bold rounded-xl hover:bg-zinc-200 transition-all">
-                      Submit Another
-                  </button>
+                  <p className="text-zinc-400 mb-8">Project <strong>{formData.projectName}</strong> has been sent to the Project Manager for review. You can track the progress in your dashboard.</p>
+                  <div className="flex gap-4 justify-center">
+                    <Link href="/customer/dashboard" className="px-8 py-3 bg-cyan-500 hover:bg-cyan-600 text-white font-bold rounded-xl transition-all">
+                        View Dashboard
+                    </Link>
+                    <button onClick={() => setIsSubmitted(false)} className="px-8 py-3 bg-white text-black font-bold rounded-xl hover:bg-zinc-200 transition-all">
+                        Submit Another
+                    </button>
+                  </div>
               </motion.div>
           </div>
       );
@@ -127,6 +142,9 @@ export default function CustomerProjectForm() {
         <div>
             <h1 className="text-4xl font-light tracking-tight">Customer Portal</h1>
             <p className="text-zinc-400 mt-1">Project Specification Sheet (PSS)</p>
+            <Link href="/customer/dashboard" className="text-sm text-cyan-400 hover:text-cyan-300 mt-2 inline-block">
+              → View My Projects Dashboard
+            </Link>
         </div>
         <div className="p-3 bg-white/5 rounded-xl border border-white/10">
             <p className="text-[10px] text-zinc-500 uppercase font-bold">Doc No</p>
@@ -220,6 +238,55 @@ export default function CustomerProjectForm() {
                          >
                              {DELIVERABLES.map(o => <option key={o} value={o}>{o}</option>)}
                          </select>
+                     </div>
+                 </div>
+             </div>
+
+             {/* 3. Additional Details */}
+             <div className="bg-white/5 border border-white/10 rounded-3xl p-8 backdrop-blur-xl">
+                 <h3 className="text-xl font-bold mb-6 flex items-center gap-2 text-green-300">
+                     <FileText className="w-5 h-5" /> Additional Information
+                 </h3>
+                 <div className="space-y-4">
+                     <div>
+                         <label className="block text-xs text-zinc-500 uppercase font-bold mb-2">Quantity</label>
+                         <input 
+                            type="number"
+                            className="w-full bg-zinc-900/50 border border-white/10 rounded-xl p-4 text-white outline-none focus:border-blue-500 transition-all"
+                            placeholder="Number of units"
+                            value={formData.quantity || ''}
+                            onChange={e => setFormData({...formData, quantity: parseInt(e.target.value) || 0})}
+                         />
+                     </div>
+                     <div>
+                         <label className="block text-xs text-zinc-500 uppercase font-bold mb-2">Target Cost (₹) - Optional</label>
+                         <input 
+                            type="number"
+                            className="w-full bg-zinc-900/50 border border-white/10 rounded-xl p-4 text-white outline-none focus:border-blue-500 transition-all"
+                            placeholder="Budget if any"
+                            value={formData.targetCost || ''}
+                            onChange={e => setFormData({...formData, targetCost: parseFloat(e.target.value) || 0})}
+                         />
+                     </div>
+                     <div>
+                         <label className="block text-xs text-zinc-500 uppercase font-bold mb-2">Description / Special Requirements</label>
+                         <textarea 
+                            className="w-full bg-zinc-900/50 border border-white/10 rounded-xl p-4 text-white outline-none focus:border-blue-500 transition-all"
+                            placeholder="Technical details, special requirements, drawings reference..."
+                            rows={3}
+                            value={formData.description}
+                            onChange={e => setFormData({...formData, description: e.target.value})}
+                         />
+                     </div>
+                     <div>
+                         <label className="block text-xs text-zinc-500 uppercase font-bold mb-2">Payment Terms - Optional</label>
+                         <input 
+                            type="text"
+                            className="w-full bg-zinc-900/50 border border-white/10 rounded-xl p-4 text-white outline-none focus:border-blue-500 transition-all"
+                            placeholder="e.g., 30% advance, 70% on delivery"
+                            value={formData.paymentTerms}
+                            onChange={e => setFormData({...formData, paymentTerms: e.target.value})}
+                         />
                      </div>
                  </div>
              </div>
