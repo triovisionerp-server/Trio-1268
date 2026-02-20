@@ -132,11 +132,14 @@ export default function Sidebar() {
 
         const q = query(
           collection(db, COLLECTIONS.PURCHASE_ORDERS),
-          where('status', '==', 'pending_md_approval')
+          orderBy('createdAt', 'desc')
         );
 
         unsubscribe = onSnapshot(q, (snapshot) => {
-          setPendingApprovals(snapshot.docs.length);
+          const count = snapshot.docs.filter(
+            doc => doc.data().status === 'pending_md_approval'
+          ).length;
+          setPendingApprovals(count);
         }, (error) => {
           console.error('Error listening to pending approvals:', error);
         });

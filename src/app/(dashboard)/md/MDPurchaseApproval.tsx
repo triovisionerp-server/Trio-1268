@@ -93,14 +93,15 @@ export default function MDPurchaseApproval() {
     const unsubPending = onSnapshot(
       query(
         collection(db, COLLECTIONS.PURCHASE_ORDERS),
-        where('status', '==', 'pending_md_approval'),
         orderBy('createdAt', 'desc')
       ),
       (snapshot) => {
-        const orders: PurchaseOrder[] = snapshot.docs.map(doc => ({
+        const allOrders = snapshot.docs.map(doc => ({
           id: doc.id,
           ...doc.data()
         })) as PurchaseOrder[];
+        
+        const orders = allOrders.filter(po => po.status === 'pending_md_approval');
         setPendingOrders(orders);
         
         // Calculate stats

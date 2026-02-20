@@ -591,24 +591,23 @@ export const subscribeToPOs = (
   callback: (pos: PurchaseOrder[]) => void,
   filters?: { status?: POStatus }
 ) => {
-  let q = query(
+  // Query without status filter to avoid needing composite index
+  const q = query(
     collection(db, COLLECTIONS.PURCHASE_ORDERS),
     orderBy('createdAt', 'desc')
   );
   
-  if (filters?.status) {
-    q = query(
-      collection(db, COLLECTIONS.PURCHASE_ORDERS),
-      where('status', '==', filters.status),
-      orderBy('createdAt', 'desc')
-    );
-  }
-  
   return onSnapshot(q, (snapshot) => {
-    const pos = snapshot.docs.map(doc => ({
+    let pos = snapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data(),
     })) as PurchaseOrder[];
+    
+    // Filter by status in memory if needed
+    if (filters?.status) {
+      pos = pos.filter(po => po.status === filters.status);
+    }
+    
     callback(pos);
   });
 };
@@ -618,15 +617,18 @@ export const subscribeToApprovedPOs = (
 ) => {
   const q = query(
     collection(db, COLLECTIONS.PURCHASE_ORDERS),
-    where('status', 'in', ['approved', 'ordered', 'partially_received']),
     orderBy('createdAt', 'desc')
   );
   
   return onSnapshot(q, (snapshot) => {
-    const pos = snapshot.docs.map(doc => ({
+    const allPOs = snapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data(),
     })) as PurchaseOrder[];
+    
+    const pos = allPOs.filter(po => 
+      ['approved', 'ordered', 'partially_received'].includes(po.status)
+    );
     callback(pos);
   });
 };
@@ -636,15 +638,16 @@ export const subscribeToPendingMDApprovals = (
 ) => {
   const q = query(
     collection(db, COLLECTIONS.PURCHASE_ORDERS),
-    where('status', '==', 'pending_md_approval'),
     orderBy('createdAt', 'desc')
   );
   
   return onSnapshot(q, (snapshot) => {
-    const pos = snapshot.docs.map(doc => ({
+    const allPOs = snapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data(),
     })) as PurchaseOrder[];
+    
+    const pos = allPOs.filter(po => po.status === 'pending_md_approval');
     callback(pos);
   });
 };
