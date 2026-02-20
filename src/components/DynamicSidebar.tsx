@@ -25,7 +25,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth/AuthContext';
 import { db } from '@/lib/firebase/client';
-import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, orderBy } from 'firebase/firestore';
 import { COLLECTIONS } from '@/types/purchase';
 import { UserRole, getRoleConfig } from '@/types/user';
 

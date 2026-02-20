@@ -123,7 +123,7 @@ export default function Sidebar() {
     // Dynamic Firebase import
     (async () => {
       try {
-        const [{ db }, { collection, query, where, onSnapshot }] = await Promise.all([
+        const [{ db }, { collection, query, where, onSnapshot, orderBy }] = await Promise.all([
           import('@/lib/firebase/client'),
           import('firebase/firestore')
         ]);
