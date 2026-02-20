@@ -909,7 +909,7 @@ export default function PurchaseDynamic({ defaultTab }: PurchaseDynamicProps) {
                         request.urgency === 'medium' ? 'bg-yellow-500/20 text-yellow-400' :
                         'bg-zinc-500/20 text-zinc-400'
                       }`}>
-                        {request.urgency.toUpperCase()}
+                        {(request.urgency || 'low').toUpperCase()}
                       </span>
                       <span className="px-2 py-0.5 bg-purple-500/20 text-purple-400 rounded-full text-xs">
                         {request.requestedByRole}
@@ -1074,7 +1074,7 @@ export default function PurchaseDynamic({ defaultTab }: PurchaseDynamicProps) {
                       po.status === 'rejected' ? 'bg-red-500/20 text-red-400' :
                       'bg-zinc-500/20 text-zinc-400'
                     }`}>
-                      {po.status.replace(/_/g, ' ').toUpperCase()}
+                      {(po.status || 'draft').replace(/_/g, ' ').toUpperCase()}
                     </span>
                   </td>
                   <td className="p-3 text-zinc-400 text-sm">
@@ -1191,7 +1191,7 @@ export default function PurchaseDynamic({ defaultTab }: PurchaseDynamicProps) {
                         request.urgency === 'medium' ? 'bg-yellow-500/20 text-yellow-400' :
                         'bg-zinc-500/20 text-zinc-400'
                       }`}>
-                        {request.urgency.toUpperCase()}
+                        {(request.urgency || 'low').toUpperCase()}
                       </span>
                     </td>
                     <td className="p-4">
@@ -1202,7 +1202,7 @@ export default function PurchaseDynamic({ defaultTab }: PurchaseDynamicProps) {
                         request.status === 'rejected' ? 'bg-red-500/20 text-red-400' :
                         'bg-zinc-500/20 text-zinc-400'
                       }`}>
-                        {request.status.replace(/_/g, ' ').toUpperCase()}
+                        {(request.status || 'pending').replace(/_/g, ' ').toUpperCase()}
                       </span>
                     </td>
                     <td className="p-4 text-zinc-400 text-sm">
@@ -1403,7 +1403,7 @@ export default function PurchaseDynamic({ defaultTab }: PurchaseDynamicProps) {
                         pr.priority === 'medium' ? 'bg-yellow-500/20 text-yellow-400' :
                         'bg-zinc-500/20 text-zinc-400'
                       }`}>
-                        {pr.priority.toUpperCase()}
+                        {(pr.priority || 'medium').toUpperCase()}
                       </span>
                     </td>
                     <td className="p-4">
@@ -1414,7 +1414,7 @@ export default function PurchaseDynamic({ defaultTab }: PurchaseDynamicProps) {
                         pr.status === 'po_created' ? 'bg-green-500/20 text-green-400' :
                         'bg-zinc-500/20 text-zinc-400'
                       }`}>
-                        {pr.status.replace(/_/g, ' ').toUpperCase()}
+                        {(pr.status || 'draft').replace(/_/g, ' ').toUpperCase()}
                       </span>
                     </td>
                     <td className="p-4 text-zinc-400 text-sm">
@@ -1626,7 +1626,7 @@ export default function PurchaseDynamic({ defaultTab }: PurchaseDynamicProps) {
                         po.status === 'rejected' ? 'bg-red-500/20 text-red-400' :
                         'bg-zinc-500/20 text-zinc-400'
                       }`}>
-                        {po.status.replace(/_/g, ' ').toUpperCase()}
+                        {(po.status || 'draft').replace(/_/g, ' ').toUpperCase()}
                       </span>
                     </td>
                     <td className="p-4 text-zinc-400 text-sm">
@@ -1844,7 +1844,7 @@ export default function PurchaseDynamic({ defaultTab }: PurchaseDynamicProps) {
                         grn.status === 'stock_updated' ? 'bg-emerald-500/20 text-emerald-400' :
                         'bg-zinc-500/20 text-zinc-400'
                       }`}>
-                        {grn.status.replace(/_/g, ' ').toUpperCase()}
+                        {(grn.status || 'pending').replace(/_/g, ' ').toUpperCase()}
                       </span>
                     </td>
                     <td className="p-4 text-zinc-400 text-sm">
@@ -2015,7 +2015,7 @@ export default function PurchaseDynamic({ defaultTab }: PurchaseDynamicProps) {
                         inv.status === 'disputed' ? 'bg-red-500/20 text-red-400' :
                         'bg-zinc-500/20 text-zinc-400'
                       }`}>
-                        {inv.status.replace(/_/g, ' ').toUpperCase()}
+                        {(inv.status || 'pending').replace(/_/g, ' ').toUpperCase()}
                       </span>
                     </td>
                     <td className="p-4 text-zinc-400 text-sm">
@@ -2139,7 +2139,7 @@ export default function PurchaseDynamic({ defaultTab }: PurchaseDynamicProps) {
                             request.urgency === 'medium' ? 'bg-yellow-500/20 text-yellow-400' :
                             'bg-zinc-500/20 text-zinc-400'
                           }`}>
-                            {request.urgency.toUpperCase()}
+                            {(request.urgency || 'low').toUpperCase()}
                           </span>
                         </div>
                         <div>
@@ -2150,7 +2150,7 @@ export default function PurchaseDynamic({ defaultTab }: PurchaseDynamicProps) {
                             request.status === 'converted_to_pr' ? 'bg-blue-500/20 text-blue-400' :
                             'bg-red-500/20 text-red-400'
                           }`}>
-                            {request.status.replace(/_/g, ' ').toUpperCase()}
+                            {(request.status || 'pending').replace(/_/g, ' ').toUpperCase()}
                           </span>
                         </div>
                       </div>
@@ -2219,7 +2219,7 @@ export default function PurchaseDynamic({ defaultTab }: PurchaseDynamicProps) {
                             po.status === 'pending_md_approval' ? 'bg-yellow-500/20 text-yellow-400' :
                             'bg-zinc-500/20 text-zinc-400'
                           }`}>
-                            {po.status.replace(/_/g, ' ').toUpperCase()}
+                            {(po.status || 'draft').replace(/_/g, ' ').toUpperCase()}
                           </span>
                         </div>
                         <div>
@@ -2310,7 +2310,7 @@ export default function PurchaseDynamic({ defaultTab }: PurchaseDynamicProps) {
                             grn.status === 'quality_check' ? 'bg-yellow-500/20 text-yellow-400' :
                             'bg-zinc-500/20 text-zinc-400'
                           }`}>
-                            {grn.status.replace(/_/g, ' ').toUpperCase()}
+                            {(grn.status || 'pending').replace(/_/g, ' ').toUpperCase()}
                           </span>
                         </div>
                         <div>
