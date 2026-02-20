@@ -24,6 +24,7 @@ const FALLBACK_USERS: Record<string, { password: string; role: string; name: str
   dhathri: { password: 'hr123', role: 'hr', name: 'Dhathri (HR)' },
   prasuna: { password: 'hr123', role: 'hr', name: 'Prasuna (HR)' },
   store : { password: 'store123', role: 'store', name: 'Store Manager' },
+  empStore: { password: 'store123', role: 'empStore', name: 'Store Team' },
   purchase: { password: 'purchase123', role: 'purchase', name: 'Purchase Team' },
   design: { password: 'design123', role: 'design', name: 'Design Team' },
   quality: { password: 'quality123', role: 'quality', name: 'Quality Team' },
@@ -53,6 +54,7 @@ const ROLE_DASHBOARD_MAP: Record<string, string> = {
   
   // Store & Inventory
   store: '/store',
+  empStore: '/empStore',
   store_manager: '/store',
   inventory: '/store',
   warehouse: '/store',

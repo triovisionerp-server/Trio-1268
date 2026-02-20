@@ -117,7 +117,7 @@ export default function MDPurchaseOverviewNew() {
   const handleApprove = async (po: PurchaseOrder, comments: string) => {
     const user = getCurrentUser();
     try {
-      await approvePO(po.id, user.id, user.name, comments);
+      await approvePO(po.id, user.uid, user.name, comments);
       setShowApprovalModal(false);
       setSelectedPO(null);
     } catch (error) {
@@ -134,7 +134,7 @@ export default function MDPurchaseOverviewNew() {
     }
     const user = getCurrentUser();
     try {
-      await rejectPO(po.id, user.id, user.name, reason);
+      await rejectPO(po.id, user.uid, user.name, reason);
       setShowApprovalModal(false);
       setSelectedPO(null);
     } catch (error) {

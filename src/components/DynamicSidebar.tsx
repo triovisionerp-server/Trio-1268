@@ -1,10 +1,10 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { 
+import {
   LayoutDashboard, 
   ShoppingCart, 
   Layers, 
@@ -18,7 +18,6 @@ import {
   FileText,
   Settings,
   Bell,
-  ChevronDown,
   Wrench,
   ClipboardCheck,
   BarChart3,
@@ -136,10 +135,8 @@ const ALL_MENU_ITEMS: MenuItem[] = [
 
 export default function DynamicSidebar() {
   const pathname = usePathname();
-  const router = useRouter();
-  const { user, userProfile, signOut, loading } = useAuth();
+  const { userProfile, signOut, loading } = useAuth();
   const [pendingApprovals, setPendingApprovals] = useState(0);
-  const [isCollapsed, setIsCollapsed] = useState(false);
 
   // Filter menu items based on user role
   const menuItems = useMemo(() => {

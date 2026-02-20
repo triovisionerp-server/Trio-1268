@@ -365,7 +365,7 @@ export default function PurchaseDynamic({ defaultTab }: PurchaseDynamicProps) {
   const handleApproveRequest = async (request: MaterialRequest) => {
     try {
       setIsSubmitting(true);
-      await approveMaterialRequest(request.id, currentUser.id, currentUser.name);
+      await approveMaterialRequest(request.id, currentUser.uid, currentUser.name);
       alert('Request approved successfully!');
     } catch (error) {
       console.error('Error approving request:', error);
@@ -379,7 +379,7 @@ export default function PurchaseDynamic({ defaultTab }: PurchaseDynamicProps) {
     if (!selectedRequestForReject || !rejectReason.trim()) return;
     try {
       setIsSubmitting(true);
-      await rejectMaterialRequest(selectedRequestForReject.id, currentUser.id, rejectReason);
+      await rejectMaterialRequest(selectedRequestForReject.id, currentUser.uid, rejectReason);
       alert('Request rejected successfully!');
       setShowRejectModal(false);
       setRejectReason('');
@@ -401,7 +401,7 @@ export default function PurchaseDynamic({ defaultTab }: PurchaseDynamicProps) {
   const handleConvertToPR = async (request: MaterialRequest) => {
     try {
       setIsSubmitting(true);
-      await convertRequestToPR(request, currentUser.id, currentUser.name);
+      await convertRequestToPR(request, currentUser.uid, currentUser.name);
       alert(`Material Request converted to PR successfully!`);
     } catch (error) {
       console.error('Error converting to PR:', error);
@@ -455,7 +455,7 @@ export default function PurchaseDynamic({ defaultTab }: PurchaseDynamicProps) {
         projectName: data.projectName || '',
         projectId: '',
         department: data.department,
-        createdBy: currentUser.id,
+        createdBy: currentUser.uid,
         createdByName: currentUser.name,
       });
       alert('PR created successfully!');
@@ -519,7 +519,7 @@ export default function PurchaseDynamic({ defaultTab }: PurchaseDynamicProps) {
         paymentTerms: supplierData.paymentTerms,
         deliveryTerms: supplierData.terms,
         expectedDelivery: supplierData.deliveryDate,
-        createdBy: currentUser.id,
+        createdBy: currentUser.uid,
         createdByName: currentUser.name,
         requiresMDApproval: true, // All POs require MD approval
         mdApprovalThreshold: 0, // No threshold - all POs need approval
@@ -610,7 +610,7 @@ export default function PurchaseDynamic({ defaultTab }: PurchaseDynamicProps) {
         paymentTerms: data.paymentTerms,
         deliveryTerms: data.deliveryTerms,
         expectedDelivery: data.expectedDelivery,
-        createdBy: currentUser.id,
+        createdBy: currentUser.uid,
         createdByName: currentUser.name,
         requiresMDApproval: true, // All POs require MD approval
         mdApprovalThreshold: 0, // No threshold - all POs need approval
@@ -681,7 +681,7 @@ export default function PurchaseDynamic({ defaultTab }: PurchaseDynamicProps) {
         items: grnItems,
         totalReceivedValue,
         status: 'pending',
-        receivedBy: currentUser.id,
+        receivedBy: currentUser.uid,
         receivedByName: currentUser.name,
         receivedAt: new Date().toISOString(),
       });
@@ -739,7 +739,7 @@ export default function PurchaseDynamic({ defaultTab }: PurchaseDynamicProps) {
         totalTax: invoiceData.taxAmount,
         totalAmount: invoiceData.invoiceAmount + invoiceData.taxAmount,
         status: 'pending',
-        verifiedBy: currentUser.id,
+        verifiedBy: currentUser.uid,
         verifiedAt: new Date().toISOString(),
       });
       alert('Invoice created successfully!');
@@ -1668,7 +1668,7 @@ export default function PurchaseDynamic({ defaultTab }: PurchaseDynamicProps) {
                           <motion.button
                             whileHover={{ scale: 1.1 }}
                             whileTap={{ scale: 0.9 }}
-                            onClick={() => markPOAsOrdered(po.id, currentUser.id)}
+                            onClick={() => markPOAsOrdered(po.id, currentUser.uid)}
                             className="w-8 h-8 bg-blue-500/20 hover:bg-blue-500/30 rounded-lg flex items-center justify-center"
                             title="Mark as Ordered"
                           >

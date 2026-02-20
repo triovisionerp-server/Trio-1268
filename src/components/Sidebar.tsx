@@ -17,8 +17,7 @@ import {
   Users,
   FileText,
   Calendar,
-  BarChart3,
-  Zap
+  BarChart3
 } from 'lucide-react';
 
 // ==========================================
@@ -42,8 +41,7 @@ const ALL_MENU_ITEMS: MenuItem[] = [
   { name: 'Tooling Overview', path: '/md/tooling', icon: Cog, roles: ['md'] },
   
   // Project Manager
-  { name: 'PM Dashboard', path: '/pm', icon: ClipboardList, roles: ['pm', 'project_manager'] },
-  { name: 'PM Ultra', path: '/pm/ultra', icon: Zap, roles: ['pm', 'project_manager'] },
+  { name: 'Project Manager', path: '/pm', icon: ClipboardList, roles: ['pm', 'project_manager'] },
   
   // Store/Inventory
   { name: 'Store', path: '/store', icon: Warehouse, roles: ['md', 'store', 'store_manager', 'inventory'] },

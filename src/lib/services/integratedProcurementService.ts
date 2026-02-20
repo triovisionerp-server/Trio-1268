@@ -418,16 +418,12 @@ export const subscribeToMaterialRequests = (
   callback: (requests: MaterialRequest[]) => void,
   filters?: { status?: RequestStatus; department?: string }
 ) => {
-  let q = query(
-    collection(db, COLLECTIONS.MATERIAL_REQUESTS),
-    orderBy('createdAt', 'desc')
-  );
+  let q = query(collection(db, COLLECTIONS.MATERIAL_REQUESTS));
   
   if (filters?.status) {
     q = query(
       collection(db, COLLECTIONS.MATERIAL_REQUESTS),
-      where('status', '==', filters.status),
-      orderBy('createdAt', 'desc')
+      where('status', '==', filters.status)
     );
   }
   
@@ -436,6 +432,14 @@ export const subscribeToMaterialRequests = (
       id: doc.id,
       ...doc.data(),
     })) as MaterialRequest[];
+    
+    // Sort in memory to avoid composite index requirement
+    requests.sort((a, b) => {
+      const aTime = typeof a.createdAt === 'number' ? a.createdAt : 0;
+      const bTime = typeof b.createdAt === 'number' ? b.createdAt : 0;
+      return bTime - aTime; // Desc order
+    });
+    
     callback(requests);
   });
 };

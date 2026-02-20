@@ -224,6 +224,10 @@ export interface ApprovalStep {
 export interface PurchaseOrder {
   id: string;
   poNumber: string;
+  bomId?: string;
+  bomNumber?: string;
+  projectId?: string;
+  projectName?: string;
   prId?: string;
   prNumber?: string;
   enquiryId?: string;
@@ -247,7 +251,19 @@ export interface PurchaseOrder {
   createdAt: string;
   updatedAt: string;
   expectedDelivery?: string;
+  deliveryTerms?: string;
   paymentTerms: string;
+  
+  // Goods Receipt
+  grnNumber?: string;
+  grnId?: string;
+  receivedAt?: string;
+  
+  // Material Issuance
+  materialsIssued?: boolean;
+  issuedAt?: any;
+  issuedBy?: string;
+  issuedToProject?: string;
   deliveryTerms: string;
   notes?: string;
   attachments?: string[];

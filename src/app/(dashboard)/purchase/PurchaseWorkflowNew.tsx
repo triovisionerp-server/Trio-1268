@@ -160,7 +160,7 @@ export default function PurchaseWorkflowNew() {
       await createEnquiry(
         pr.id,
         pr.prNumber,
-        user.id,
+        user.uid,
         user.name,
         pr.items.map(item => ({
           materialId: item.materialId,
@@ -624,7 +624,7 @@ export default function PurchaseWorkflowNew() {
             }}
             onCreatePO={async (expectedDelivery, notes) => {
               const user = getCurrentUser();
-              await createPOFromEnquiry(selectedEnquiry.id, user.id, user.name, expectedDelivery, notes);
+              await createPOFromEnquiry(selectedEnquiry.id, user.uid, user.name, expectedDelivery, notes);
               alert('Purchase Order created!');
               setShowCreatePOModal(false);
               setSelectedEnquiry(null);

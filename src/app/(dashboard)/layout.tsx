@@ -1,30 +1,42 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import Sidebar from '@/components/Sidebar';
 import { Loader2 } from 'lucide-react';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
-  const [currentUser, setCurrentUser] = useState<{ role: string; name: string } | null>(null);
+  const [, startTransition] = useTransition();
   const router = useRouter();
 
   useEffect(() => {
     // Check localStorage for user authentication
-    const storedUser = localStorage.getItem('currentUser');
-    if (storedUser) {
-      try {
-        const user = JSON.parse(storedUser);
-        setCurrentUser(user);
-        setIsAuthenticated(true);
-      } catch {
-        setIsAuthenticated(false);
+    const checkAuth = () => {
+      const storedUser = localStorage.getItem('currentUser');
+      if (storedUser) {
+        try {
+          JSON.parse(storedUser); // Just validate
+          return true;
+        } catch {
+          return false;
+        }
       }
-    } else {
-      setIsAuthenticated(false);
-    }
+      return false;
+    };
+    
+    // Use startTransition to avoid cascading render warning
+    startTransition(() => {
+      setIsAuthenticated(checkAuth());
+    });
   }, []);
+
+  // Redirect to login if not authenticated (in useEffect to avoid render issues)
+  useEffect(() => {
+    if (isAuthenticated === false) {
+      router.push('/login');
+    }
+  }, [isAuthenticated, router]);
 
   // Show loading state while checking auth
   if (isAuthenticated === null) {
@@ -38,11 +50,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     );
   }
 
-  // Redirect to login if not authenticated
+  // Show loading while redirecting
   if (!isAuthenticated) {
-    if (typeof window !== 'undefined') {
-      router.push('/login');
-    }
     return (
       <div className="min-h-screen flex items-center justify-center bg-zinc-950">
         <div className="flex flex-col items-center gap-4">

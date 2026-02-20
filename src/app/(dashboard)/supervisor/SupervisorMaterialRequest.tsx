@@ -27,8 +27,7 @@ import {
   collection, 
   onSnapshot, 
   query, 
-  where, 
-  orderBy 
+  where
 } from 'firebase/firestore';
 import {
   createMaterialRequest,
@@ -150,14 +149,20 @@ export default function SupervisorMaterialRequest() {
     const unsubRequests = onSnapshot(
       query(
         collection(db, COLLECTIONS.MATERIAL_REQUESTS),
-        where('requestedByRole', '==', 'supervisor'),
-        orderBy('createdAt', 'desc')
+        where('requestedByRole', '==', 'supervisor')
       ),
       (snapshot) => {
         const requests: MaterialRequest[] = snapshot.docs.map(doc => ({
           id: doc.id,
           ...doc.data()
         })) as MaterialRequest[];
+        
+        // Sort in memory to avoid composite index requirement
+        requests.sort((a, b) => {
+          const aTime = typeof a.createdAt === 'number' ? a.createdAt : 0;
+          const bTime = typeof b.createdAt === 'number' ? b.createdAt : 0;
+          return bTime - aTime; // Desc order
+        });
         setMyRequests(requests);
       },
       (error) => {

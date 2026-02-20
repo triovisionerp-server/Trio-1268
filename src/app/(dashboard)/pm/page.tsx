@@ -1,27 +1,64 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
-import * as XLSX from 'xlsx'; 
-import { 
-  Save, Upload, Download, Trash2, Plus, RefreshCw, 
-  Search, ExternalLink, TrendingUp, Clock, CheckCircle, 
-  Activity, Package, FileText, ClipboardList, Filter,
-  AlertTriangle, Calendar, Target, Users, BarChart3,
-  Eye, Edit, MoreVertical, Bell, Flag, ArrowUpRight,
-  ArrowDownRight, Layers, Timer, Zap, Box, X, Grid, List
-} from 'lucide-react';
-import { 
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
-  PieChart, Pie, Cell, AreaChart, Area, Legend
-} from 'recharts';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { 
+  LayoutDashboard, ClipboardList, Users, BarChart3, Settings,
+  Bell, Search, Filter, Plus,
+  Clock, CheckCircle, AlertTriangle,
+  Package, Calendar, FileText, Box,
+  DollarSign, Eye,
+  Send, Play, X, ChevronRight,
+  Grid, List, Kanban,
+  Flag,
+  ArrowUpRight, ArrowDownRight,
+  Star, MessageSquare
+} from 'lucide-react';
+import { collection, query, onSnapshot, orderBy, doc, updateDoc, getDocs } from 'firebase/firestore';
+import { db } from '@/lib/firebase/client';
+import { useAuthStore } from '@/lib/stores/useAuthStore';
+import { toast } from '@/lib/toast';
+import {
+  AreaChart, Area, PieChart, Pie,
+  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, Legend
+} from 'recharts';
 import BOMCreator from './BOMCreator';
+import SimpleBOMCreator from './SimpleBOMCreator';
+import NeatBOMCreator from './NeatBOMCreator';
+import AdvancedBOMCreator from './AdvancedBOMCreator';
+import * as XLSX from 'xlsx';
 
 // ==========================================
 // TYPES
 // ==========================================
-interface Project {
-  id: string | number;
+interface CustomerRequest {
+  id: string;
+  docNo: string;
+  customerName: string;
+  customerEmail: string;
+  projectName: string;
+  projectNumber: string;
+  description: string;
+  quantity: number;
+  targetCost: number;
+  deliverables: string;
+  process: string;
+  startDate: string;
+  deliveryDate: string;
+  status: string;
+  priority?: 'low' | 'medium' | 'high' | 'critical';
+  assignedTo?: string;
+  progress?: number;
+  createdAt: string;
+  estimatedHours?: number;
+  actualHours?: number;
+  notes?: string;
+  starred?: boolean;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+interface PMProject {
+  id: string;
   projectCode: string;
   projectDescription: string;
   destination: string;
@@ -37,1297 +74,844 @@ interface Project {
   remarks: string;
   priority: 'low' | 'medium' | 'high' | 'critical';
   assignedTeam: string;
+  createdAt: number;
+}
+
+interface TeamMember {
+  id: string;
+  name: string;
+  role: string;
+  activeProjects: number;
+  capacity: number;
+  efficiency: number;
+  avatar?: string;
+}
+
+interface Material {
+  id: string;
+  code: string;
+  name: string;
+  currentStock: number;
+  minStock: number;
+  unit: string;
+  category: string;
 }
 
 // ==========================================
 // CONSTANTS
 // ==========================================
-const TEAMS = ['Team A', 'Team B', 'Team C', 'Assembly', 'Finishing', 'Quality', 'Machining', 'Welding'];
-
-const PRIORITY_COLORS: Record<string, string> = {
-  low: 'bg-zinc-500',
-  medium: 'bg-blue-500',
-  high: 'bg-orange-500',
-  critical: 'bg-red-500',
+const COLORS = {
+  primary: '#06b6d4',
+  success: '#10b981',
+  warning: '#f59e0b',
+  danger: '#ef4444',
+  info: '#3b82f6',
+  purple: '#8b5cf6',
 };
 
-const STATUS_COLORS: Record<string, string> = {
-  'Pending': 'bg-zinc-500/20 text-zinc-400 border-zinc-500/30',
-  'In Progress': 'bg-blue-500/20 text-blue-400 border-blue-500/30',
-  'Completed': 'bg-green-500/20 text-green-400 border-green-500/30',
-  'On Hold': 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
-  'Delayed': 'bg-red-500/20 text-red-400 border-red-500/30',
-};
-
-// --- EXACT COLUMNS (From your Data Entry HTML) ---
-const COLUMNS = [
-  { id: 'projectCode', name: 'Project Code', type: 'text', width: 120 },
-  { id: 'projectDescription', name: 'Project Description', type: 'text', width: 220 },
-  { id: 'destination', name: 'Destination', type: 'text', width: 140 },
-  { id: 'poReference', name: 'PO Reference', type: 'text', width: 130 },
-  { id: 'targetCompletionDate', name: 'Target Date', type: 'date', width: 140 },
-  { id: 'totalParts', name: 'Total Parts', type: 'number', width: 100 },
-  { id: 'totalPartsProduced', name: 'Produced', type: 'number', width: 100 },
-  { id: 'totalPartsToBeProduced', name: 'Remaining', type: 'number', width: 100, readOnly: true },
-  { id: 'percentCompleted', name: '% Done', type: 'number', width: 100, readOnly: true },
-  { id: 'status', name: 'Status', type: 'text', width: 120 },
-  { id: 'containerNumber', name: 'Container #', type: 'text', width: 140 },
-  { id: 'dispatchDate', name: 'Dispatch', type: 'date', width: 140 },
-  { id: 'remarks', name: 'Remarks', type: 'text', width: 200 },
-  { id: 'priority', name: 'Priority', type: 'select', width: 100 },
-  { id: 'assignedTeam', name: 'Team', type: 'select', width: 120 }
+const STATUS_WORKFLOW = [
+  { id: 'Customer Requirements', label: 'Requirements', color: 'zinc' },
+  { id: 'Under PM Review', label: 'PM Review', color: 'blue' },
+  { id: 'BOM Creation', label: 'BOM', color: 'purple' },
+  { id: 'Costing', label: 'Costing', color: 'orange' },
+  { id: 'MD Approval', label: 'MD Approval', color: 'yellow' },
+  { id: 'In Production', label: 'Production', color: 'cyan' },
+  { id: 'Completed', label: 'Completed', color: 'green' },
 ];
 
-export default function ProjectManagerDashboard() {
-  // ==========================================
-  // STATE
-  // ==========================================
-  const [data, setData] = useState<Project[]>([]);
-  const [stats, setStats] = useState({ 
-    total: 0, completed: 0, inProgress: 0, efficiency: 0,
-    delayed: 0, onHold: 0, pending: 0, critical: 0, producedParts: 0, totalParts: 0
-  });
-  const [chartData, setChartData] = useState<{ name: string; Target: number; Actual: number; completion: number }[]>([]);
-  const [statusChart, setStatusChart] = useState<{ name: string; value: number; color: string }[]>([]);
-  const [weeklyData, setWeeklyData] = useState<{ day: string; completed: number }[]>([]);
+const PRIORITY_CONFIG = {
+  critical: { label: 'Critical', color: 'bg-red-500', icon: '🔥' },
+  high: { label: 'High', color: 'bg-orange-500', icon: '⚡' },
+  medium: { label: 'Medium', color: 'bg-blue-500', icon: '📌' },
+  low: { label: 'Low', color: 'bg-zinc-500', icon: '📋' },
+};
+
+// ==========================================
+// MAIN COMPONENT
+// ==========================================
+export default function PMUltraDashboard() {
+  const { user, initializeUser } = useAuthStore();
+  
+  // Data State
+  const [requests, setRequests] = useState<CustomerRequest[]>([]);
+  const [materials, setMaterials] = useState<Material[]>([]);
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+  const [pmProjects, setPmProjects] = useState<PMProject[]>([]);
+  const [loading, setLoading] = useState(true);
   
   // UI State
-  const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
-  const [priorityFilter, setPriorityFilter] = useState('all');
-  const [teamFilter, setTeamFilter] = useState('all');
-  const [activeTab, setActiveTab] = useState<'overview' | 'table' | 'cards' | 'timeline'>('overview');
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'requests' | 'projects' | 'team' | 'analytics'>('dashboard');
+  const [viewMode, setViewMode] = useState<'grid' | 'list' | 'kanban' | 'timeline'>('grid');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter] = useState('all');
+  const [priorityFilter] = useState('all');
+  const [assigneeFilter] = useState('all');
+  const [showFilters, setShowFilters] = useState(false);
   
-  // Modals
+  // Modal State
+  const [selectedRequest, setSelectedRequest] = useState<CustomerRequest | null>(null);
   const [showBOMCreator, setShowBOMCreator] = useState(false);
   const [selectedProject, setSelectedProject] = useState<{ id: string; name: string } | null>(null);
-  const [showProjectModal, setShowProjectModal] = useState(false);
-  const [editingProject, setEditingProject] = useState<Project | null>(null);
-  const [showQuickView, setShowQuickView] = useState<Project | null>(null);
   
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
+  // Notification State
+  const [newRequestsCount, setNewRequestsCount] = useState(0);
+  const [criticalAlerts, setCriticalAlerts] = useState(0);
 
   // ==========================================
-  // ANALYTICS - defined before useEffect
-  // ==========================================
-  const runAnalytics = (dataset: Project[]) => {
-    const valid = dataset.filter(p => p.projectCode);
-    
-    const total = valid.length;
-    const completed = valid.filter(p => p.status === 'Completed' || (p.percentCompleted || 0) >= 100).length;
-    const inProgress = valid.filter(p => p.status === 'In Progress' || ((p.percentCompleted || 0) > 0 && (p.percentCompleted || 0) < 100)).length;
-    const delayed = valid.filter(p => p.status === 'Delayed').length;
-    const onHold = valid.filter(p => p.status === 'On Hold').length;
-    const pending = valid.filter(p => p.status === 'Pending' || (!p.status && (p.percentCompleted || 0) === 0)).length;
-    const critical = valid.filter(p => p.priority === 'critical').length;
-    
-    const totalPercent = valid.reduce((acc, curr) => acc + (curr.percentCompleted || 0), 0);
-    const efficiency = total > 0 ? Math.round(totalPercent / total) : 0;
-    
-    const producedParts = valid.reduce((acc, curr) => acc + (parseInt(String(curr.totalPartsProduced)) || 0), 0);
-    const totalPartsCount = valid.reduce((acc, curr) => acc + (parseInt(String(curr.totalParts)) || 0), 0);
-
-    setStats({ total, completed, inProgress, efficiency, delayed, onHold, pending, critical, producedParts, totalParts: totalPartsCount });
-
-    // Bar Chart Data
-    const barData = valid.slice(0, 8).map(p => ({
-      name: p.projectCode || '',
-      Target: parseFloat(String(p.totalParts)) || 0,
-      Actual: parseFloat(String(p.totalPartsProduced)) || 0,
-      completion: p.percentCompleted || 0
-    }));
-    setChartData(barData);
-
-    // Pie Chart Data
-    setStatusChart([
-      { name: 'Completed', value: completed, color: '#10b981' },
-      { name: 'In Progress', value: inProgress, color: '#3b82f6' },
-      { name: 'Pending', value: pending, color: '#f59e0b' },
-      { name: 'Delayed', value: delayed, color: '#ef4444' },
-      { name: 'On Hold', value: onHold, color: '#8b5cf6' }
-    ]);
-
-    // Weekly Progress (fixed values to avoid impure Math.random)
-    setWeeklyData([
-      { day: 'Mon', completed: 12 },
-      { day: 'Tue', completed: 18 },
-      { day: 'Wed', completed: 15 },
-      { day: 'Thu', completed: 22 },
-      { day: 'Fri', completed: 25 },
-      { day: 'Sat', completed: 8 },
-      { day: 'Sun', completed: 5 },
-    ]);
-  };
-
-  // ==========================================
-  // DATA LOADING
+  // INITIALIZATION
   // ==========================================
   useEffect(() => {
-    const saved = localStorage.getItem('erpProjectData');
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      setData(parsed);
-      runAnalytics(parsed);
-    } else {
-      const initial = Array(3).fill({}).map((_, i) => ({ 
-        id: Date.now() + i, 
-        status: 'Pending',
-        priority: 'medium',
-        assignedTeam: ''
-      }));
-      setData(initial as Project[]);
-      runAnalytics(initial as Project[]);
-    }
+    initializeUser();
+  }, [initializeUser]);
+
+  // Load Customer Requests
+  useEffect(() => {
+    const q = query(
+      collection(db, 'customer_requirements'),
+      orderBy('createdAt', 'desc')
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const requestsList: CustomerRequest[] = [];
+      let newCount = 0;
+      let criticalCount = 0;
+
+      snapshot.forEach((docSnap) => {
+        const data = { id: docSnap.id, ...docSnap.data() } as CustomerRequest;
+        requestsList.push(data);
+
+        // Count new requests (last 5 minutes)
+        const createdAt = new Date(data.createdAt);
+        const now = new Date();
+        const diffMinutes = (now.getTime() - createdAt.getTime()) / 1000 / 60;
+        if (diffMinutes < 5 && data.status === 'Customer Requirements') {
+          newCount++;
+        }
+
+        // Count critical items
+        if (data.priority === 'critical' && data.status !== 'Completed') {
+          criticalCount++;
+        }
+      });
+
+      setRequests(requestsList);
+      setNewRequestsCount(newCount);
+      setCriticalAlerts(criticalCount);
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  // Load Materials
+  useEffect(() => {
+    const loadMaterials = async () => {
+      try {
+        const materialsSnapshot = await getDocs(collection(db, 'materials'));
+        const materialsList: Material[] = [];
+        materialsSnapshot.forEach((doc) => {
+          materialsList.push({ id: doc.id, ...doc.data() } as Material);
+        });
+        setMaterials(materialsList);
+      } catch (error) {
+        console.error('Error loading materials:', error);
+      }
+    };
+    loadMaterials();
+  }, []);
+
+  // Load PM Projects
+  useEffect(() => {
+    const q = query(
+      collection(db, 'pm_projects'),
+      orderBy('createdAt', 'desc')
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const projectsList: PMProject[] = [];
+      snapshot.forEach((docSnap) => {
+        projectsList.push({ id: docSnap.id, ...docSnap.data() } as PMProject);
+      });
+      setPmProjects(projectsList);
+    }, (error) => {
+      console.error('Error loading PM projects:', error);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  // Mock Team Data (replace with real data)
+  useEffect(() => {
+    setTeamMembers([
+      { id: '1', name: 'John Doe', role: 'Senior PM', activeProjects: 5, capacity: 80, efficiency: 95 },
+      { id: '2', name: 'Jane Smith', role: 'PM', activeProjects: 3, capacity: 60, efficiency: 92 },
+      { id: '3', name: 'Bob Wilson', role: 'Junior PM', activeProjects: 2, capacity: 40, efficiency: 88 },
+    ]);
   }, []);
 
   // ==========================================
-  // DATA OPERATIONS
+  // COMPUTED STATS
   // ==========================================
-  const handleCellChange = (index: number, field: string, value: string | number) => {
-    const updated = [...data];
-    if (!updated[index]) updated[index] = { id: Date.now() } as Project;
-    (updated[index] as Record<string, unknown>)[field] = value;
-
-    if (field === 'totalParts' || field === 'totalPartsProduced') {
-      const total = parseFloat(String(updated[index].totalParts)) || 0;
-      const produced = parseFloat(String(updated[index].totalPartsProduced)) || 0;
-      const percent = total > 0 ? Math.round((produced / total) * 100) : 0;
-      
-      updated[index].percentCompleted = percent;
-      updated[index].totalPartsToBeProduced = Math.max(0, total - produced);
-      
-      if (percent >= 100) updated[index].status = 'Completed';
-      else if (percent > 0) updated[index].status = 'In Progress';
-      else if (!updated[index].status) updated[index].status = 'Pending';
-    }
-
-    setData(updated);
-    
-    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
-    autoSaveTimerRef.current = setTimeout(() => {
-      localStorage.setItem('erpProjectData', JSON.stringify(updated));
-      localStorage.setItem('boms', JSON.stringify(updated));
-      runAnalytics(updated);
-    }, 500);
-  };
-
-  const addNewRow = () => {
-    const newProject: Project = {
-      id: Date.now(),
-      projectCode: '',
-      projectDescription: '',
-      destination: '',
-      poReference: '',
-      targetCompletionDate: '',
-      totalParts: 0,
-      totalPartsProduced: 0,
-      totalPartsToBeProduced: 0,
-      percentCompleted: 0,
-      status: 'Pending',
-      containerNumber: '',
-      dispatchDate: '',
-      remarks: '',
-      priority: 'medium',
-      assignedTeam: ''
-    };
-    setData([...data, newProject]);
-  };
-
-  const deleteProject = (id: string | number) => {
-    if (confirm('Delete this project?')) {
-      const updated = data.filter(p => p.id !== id);
-      setData(updated);
-      localStorage.setItem('erpProjectData', JSON.stringify(updated));
-      runAnalytics(updated);
-    }
-  };
-
-  const addProject = (project: Partial<Project>) => {
-    const newProject: Project = {
-      id: `proj_${Date.now()}`,
-      projectCode: project.projectCode || '',
-      projectDescription: project.projectDescription || '',
-      destination: project.destination || '',
-      poReference: project.poReference || '',
-      targetCompletionDate: project.targetCompletionDate || '',
-      totalParts: project.totalParts || 0,
-      totalPartsProduced: project.totalPartsProduced || 0,
-      totalPartsToBeProduced: (project.totalParts || 0) - (project.totalPartsProduced || 0),
-      percentCompleted: project.totalParts ? Math.round(((project.totalPartsProduced || 0) / project.totalParts) * 100) : 0,
-      status: project.status || 'Pending',
-      containerNumber: project.containerNumber || '',
-      dispatchDate: project.dispatchDate || '',
-      remarks: project.remarks || '',
-      priority: project.priority || 'medium',
-      assignedTeam: project.assignedTeam || '',
-    };
-    const updated = [newProject, ...data];
-    setData(updated);
-    localStorage.setItem('erpProjectData', JSON.stringify(updated));
-    runAnalytics(updated);
-    setShowProjectModal(false);
-    setEditingProject(null);
-  };
-
-  const updateProject = (id: string | number, updates: Partial<Project>) => {
-    const updated = data.map(p => {
-      if (p.id === id) {
-        const newData = { ...p, ...updates };
-        if (updates.totalParts !== undefined || updates.totalPartsProduced !== undefined) {
-          const total = updates.totalParts ?? p.totalParts;
-          const produced = updates.totalPartsProduced ?? p.totalPartsProduced;
-          newData.totalPartsToBeProduced = Math.max(0, total - produced);
-          newData.percentCompleted = total > 0 ? Math.round((produced / total) * 100) : 0;
-          if (newData.percentCompleted >= 100) newData.status = 'Completed';
-        }
-        return newData;
+  const stats = useMemo(() => {
+    const total = requests.length;
+    const completed = requests.filter(r => r.status === 'Completed').length;
+    const inProgress = requests.filter(r => 
+      ['Under PM Review', 'BOM Creation', 'Costing', 'MD Approval', 'In Production'].includes(r.status)
+    ).length;
+    const pending = requests.filter(r => r.status === 'Customer Requirements').length;
+    const delayed = requests.filter(r => {
+      if (r.deliveryDate && r.status !== 'Completed') {
+        const dueDate = new Date(r.deliveryDate);
+        return dueDate < new Date();
       }
-      return p;
-    });
-    setData(updated);
-    localStorage.setItem('erpProjectData', JSON.stringify(updated));
-    runAnalytics(updated);
-    setShowProjectModal(false);
-    setEditingProject(null);
-  };
+      return false;
+    }).length;
 
-  // ==========================================
-  // IMPORT/EXPORT
-  // ==========================================
-  const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const totalValue = requests.reduce((sum, r) => sum + (r.targetCost || 0), 0);
+    const completedValue = requests
+      .filter(r => r.status === 'Completed')
+      .reduce((sum, r) => sum + (r.targetCost || 0), 0);
 
-    const reader = new FileReader();
-    reader.onload = (evt) => {
-      try {
-        const bstr = evt.target?.result;
-        const wb = XLSX.read(bstr, { type: 'binary' });
-        const json = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
+    const avgCompletionTime = requests
+      .filter(r => r.status === 'Completed' && r.estimatedHours && r.actualHours)
+      .reduce((sum, r) => sum + ((r.actualHours || 0) - (r.estimatedHours || 0)), 0) / (completed || 1);
 
-        const mapped = json.map((row: any) => ({
-          id: Date.now() + Math.random(),
-          projectCode: row['Project Code'] || row['Code'] || '',
-          projectDescription: row['Project Description'] || row['Description'] || '',
-          destination: row['Destination'] || '',
-          poReference: row['PO Reference'] || '',
-          totalParts: row['Total No. of parts'] || row['Total'] || row['Total Parts'] || 0,
-          totalPartsProduced: row['Total parts produced'] || row['Produced'] || 0,
-          status: row['Status'] || 'Pending',
-          priority: row['Priority'] || 'medium',
-          assignedTeam: row['Team'] || row['Assigned Team'] || '',
-          targetCompletionDate: row['Target Date'] || '',
-          remarks: row['Remarks'] || ''
-        }));
-
-        const processed = mapped.map(row => {
-          const total = parseFloat(row.totalParts as any) || 0;
-          const produced = parseFloat(row.totalPartsProduced as any) || 0;
-          return {
-            ...row,
-            percentCompleted: total > 0 ? Math.round((produced / total) * 100) : 0,
-            totalPartsToBeProduced: Math.max(0, total - produced)
-          };
-        });
-
-        const finalData = [...processed, ...data] as Project[];
-        setData(finalData);
-        runAnalytics(finalData);
-        localStorage.setItem('erpProjectData', JSON.stringify(finalData));
-        alert(`Imported ${processed.length} projects.`);
-      } catch (e) { alert("Excel Import Error"); }
+    return {
+      total,
+      completed,
+      inProgress,
+      pending,
+      delayed,
+      critical: criticalAlerts,
+      completionRate: total > 0 ? Math.round((completed / total) * 100) : 0,
+      totalValue,
+      completedValue,
+      avgCompletionTime: Math.round(avgCompletionTime),
     };
-    reader.readAsBinaryString(file);
-    e.target.value = "";
+  }, [requests, criticalAlerts]);
+
+  // ==========================================
+  // FILTERED DATA
+  // ==========================================
+  const filteredRequests = useMemo(() => {
+    return requests.filter(request => {
+      const matchesSearch = 
+        request.projectName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        request.customerName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        request.projectNumber?.toLowerCase().includes(searchQuery.toLowerCase());
+      
+      const matchesStatus = statusFilter === 'all' || request.status === statusFilter;
+      const matchesPriority = priorityFilter === 'all' || request.priority === priorityFilter;
+      const matchesAssignee = assigneeFilter === 'all' || request.assignedTo === assigneeFilter;
+
+      return matchesSearch && matchesStatus && matchesPriority && matchesAssignee;
+    });
+  }, [requests, searchQuery, statusFilter, priorityFilter, assigneeFilter]);
+
+  // ==========================================
+  // CHART DATA
+  // ==========================================
+  const statusChartData = useMemo(() => {
+    return STATUS_WORKFLOW.map(status => ({
+      name: status.label,
+      value: requests.filter(r => r.status === status.id).length,
+      color: status.color === 'green' ? COLORS.success :
+             status.color === 'blue' ? COLORS.info :
+             status.color === 'orange' ? COLORS.warning :
+             status.color === 'red' ? COLORS.danger :
+             COLORS.primary
+    }));
+  }, [requests]);
+
+  const weeklyTrendData = useMemo(() => {
+    const last7Days = Array.from({ length: 7 }, (_, i) => {
+      const date = new Date();
+      date.setDate(date.getDate() - (6 - i));
+      return date.toISOString().split('T')[0];
+    });
+
+    return last7Days.map(date => ({
+      date: new Date(date).toLocaleDateString('en-US', { weekday: 'short' }),
+      new: requests.filter(r => r.createdAt?.startsWith(date)).length,
+      completed: requests.filter(r => r.status === 'Completed' && r.createdAt?.startsWith(date)).length,
+    }));
+  }, [requests]);
+
+  // Priority distribution for future charts
+  // const priorityDistribution = useMemo(() => {
+  //   return Object.entries(PRIORITY_CONFIG).map(([key, config]) => ({
+  //     name: config.label,
+  //     value: requests.filter(r => r.priority === key).length,
+  //     color: config.color.replace('bg-', '').replace('-500', ''),
+  //   }));
+  // }, [requests]);
+
+  // ==========================================
+  // ACTIONS
+  // ==========================================
+  const handleStatusUpdate = async (requestId: string, newStatus: string) => {
+    try {
+      await updateDoc(doc(db, 'customer_requirements', requestId), {
+        status: newStatus,
+        updatedAt: new Date().toISOString(),
+        updatedBy: user?.email || 'PM'
+      });
+      toast.success(`Status updated to ${newStatus}`);
+    } catch (error) {
+      console.error('Error updating status:', error);
+      toast.error('Failed to update status');
+    }
   };
 
-  const handleExport = () => {
-    const ws = XLSX.utils.json_to_sheet(data);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Projects");
-    XLSX.writeFile(wb, `Projects_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  const handlePriorityUpdate = async (requestId: string, priority: string) => {
+    try {
+      await updateDoc(doc(db, 'customer_requirements', requestId), {
+        priority,
+        updatedAt: new Date().toISOString()
+      });
+      toast.success(`Priority set to ${priority}`);
+    } catch (error) {
+      console.error('Error updating priority:', error);
+      toast.error('Failed to update priority');
+    }
   };
 
-  const clearAll = () => {
-    if (!confirm('Clear all project data? This cannot be undone.')) return;
-    localStorage.removeItem('erpProjectData');
-    localStorage.removeItem('boms');
-    setData([]);
-    setStats({ total: 0, completed: 0, inProgress: 0, efficiency: 0, delayed: 0, onHold: 0, pending: 0, critical: 0, producedParts: 0, totalParts: 0 });
-    setChartData([]);
-    setStatusChart([]);
+  const handleStarToggle = async (request: CustomerRequest) => {
+    try {
+      await updateDoc(doc(db, 'customer_requirements', request.id), {
+        starred: !request.starred
+      });
+    } catch (error) {
+      console.error('Error toggling star:', error);
+    }
   };
 
   // ==========================================
-  // FILTERING
+  // RENDER: KPI CARDS
   // ==========================================
-  const filteredData = data.filter(p => {
-    const matchesSearch = !searchTerm || 
-      p.projectCode?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.projectDescription?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.destination?.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = statusFilter === 'all' || p.status === statusFilter;
-    const matchesPriority = priorityFilter === 'all' || p.priority === priorityFilter;
-    const matchesTeam = teamFilter === 'all' || p.assignedTeam === teamFilter;
-    return matchesSearch && matchesStatus && matchesPriority && matchesTeam;
-  });
+  const renderKPICards = () => (
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 gap-4">
+      <KPICard
+        icon={<ClipboardList className="w-5 h-5" />}
+        label="Total Requests"
+        value={stats.total}
+        trend={stats.total > 0 ? 'up' : 'stable'}
+        trendValue={12}
+        color="from-cyan-500 to-blue-600"
+      />
+      <KPICard
+        icon={<Clock className="w-5 h-5" />}
+        label="Pending"
+        value={stats.pending}
+        badge={newRequestsCount > 0 ? `${newRequestsCount} new` : undefined}
+        color="from-zinc-500 to-zinc-600"
+      />
+      <KPICard
+        icon={<Play className="w-5 h-5" />}
+        label="In Progress"
+        value={stats.inProgress}
+        color="from-blue-500 to-blue-600"
+      />
+      <KPICard
+        icon={<CheckCircle className="w-5 h-5" />}
+        label="Completed"
+        value={stats.completed}
+        subtitle={`${stats.completionRate}%`}
+        color="from-green-500 to-green-600"
+      />
+      <KPICard
+        icon={<AlertTriangle className="w-5 h-5" />}
+        label="Delayed"
+        value={stats.delayed}
+        badge={stats.delayed > 0 ? 'Action needed' : undefined}
+        color="from-red-500 to-red-600"
+      />
+      <KPICard
+        icon={<Flag className="w-5 h-5" />}
+        label="Critical"
+        value={stats.critical}
+        color="from-orange-500 to-orange-600"
+      />
+    </div>
+  );
 
-  // Days until deadline
-  const getDaysUntil = (date: string) => {
-    if (!date) return null;
-    const target = new Date(date);
-    const today = new Date();
-    return Math.ceil((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-  };
-
-  // Get unique teams from data
-  const usedTeams = [...new Set(data.filter(p => p.assignedTeam).map(p => p.assignedTeam))];
-
-  // Tabs
-  const tabs = [
-    { id: 'overview', label: 'Overview', icon: BarChart3 },
-    { id: 'table', label: 'Data Table', icon: List },
-    { id: 'cards', label: 'Card View', icon: Grid },
-    { id: 'timeline', label: 'Timeline', icon: Calendar },
-  ];
+  // ==========================================
+  // RENDER: MAIN CONTENT
+  // ==========================================
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-cyan-500/30 border-t-cyan-500 rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-zinc-400">Loading PM Dashboard...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-white font-sans pb-20 relative overflow-hidden">
-      
-      {/* Background Glows */}
-      <div className="fixed inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:4rem_4rem] pointer-events-none"></div>
-      <div className="fixed top-0 left-0 w-96 h-96 bg-purple-500/10 rounded-full blur-[120px] pointer-events-none"></div>
-      <div className="fixed bottom-0 right-0 w-96 h-96 bg-blue-500/10 rounded-full blur-[120px] pointer-events-none"></div>
-
-      <div className="relative z-10 space-y-6 p-4 lg:p-6">
-      
-        {/* ==========================================
-            HEADER
-        ========================================== */}
-        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
-          <div>
-            <h1 className="text-3xl font-bold text-white">Project Manager Dashboard</h1>
-            <p className="text-zinc-400 mt-1">Master Production Control & Planning</p>
-          </div>
-          <div className="flex items-center gap-3 flex-wrap">
-            <button
-              onClick={() => {
-                setEditingProject(null);
-                setShowProjectModal(true);
-              }}
-              className="flex items-center gap-2 px-4 py-2.5 bg-zinc-800 text-white rounded-xl hover:bg-zinc-700 transition-colors"
-            >
-              <Plus className="w-4 h-4" />
-              New Project
-            </button>
-            <button
-              onClick={() => {
-                const projectCode = data.find(d => d.projectCode)?.projectCode || 'NEW-PROJECT';
-                const projectName = data.find(d => d.projectDescription)?.projectDescription || 'New Project';
-                setSelectedProject({ id: projectCode, name: projectName });
-                setShowBOMCreator(true);
-              }}
-              className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-purple-500 to-pink-600 text-white font-semibold rounded-xl hover:opacity-90 transition-opacity"
-            >
-              <ClipboardList className="w-4 h-4" />
-              Create BOM
-            </button>
-            <div className="flex items-center gap-2 px-3 py-2 bg-green-500/10 border border-green-500/20 rounded-xl text-green-400 text-sm">
-              <Activity className="w-4 h-4 animate-pulse" />
-              Live Sync
+    <div className="min-h-screen bg-zinc-950 text-white">
+      {/* Header */}
+      <div className="sticky top-0 z-40 bg-zinc-950/95 backdrop-blur-sm border-b border-white/10">
+        <div className="p-6">
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h1 className="text-3xl font-bold bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">
+                Project Manager Dashboard
+              </h1>
+              <p className="text-zinc-400 mt-1">Welcome back, {user?.name || 'PM'}</p>
+            </div>
+            
+            <div className="flex items-center gap-3">
+              <button className="relative p-2 hover:bg-white/5 rounded-lg transition-colors">
+                <Bell className="w-5 h-5 text-zinc-400" />
+                {(newRequestsCount + criticalAlerts) > 0 && (
+                  <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+                )}
+              </button>
+              <button
+                onClick={() => setShowFilters(!showFilters)}
+                className="p-2 hover:bg-white/5 rounded-lg transition-colors"
+              >
+                <Filter className="w-5 h-5 text-zinc-400" />
+              </button>
+              <button className="p-2 hover:bg-white/5 rounded-lg transition-colors">
+                <Settings className="w-5 h-5 text-zinc-400" />
+              </button>
             </div>
           </div>
+
+          {/* Navigation Tabs */}
+          <div className="flex items-center gap-2 overflow-x-auto pb-2">
+            {[
+              { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+              { id: 'requests', label: 'Requests', icon: ClipboardList, badge: stats.pending },
+              { id: 'projects', label: 'Projects', icon: Package },
+              { id: 'team', label: 'Team', icon: Users },
+              { id: 'analytics', label: 'Analytics', icon: BarChart3 },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id as 'dashboard' | 'requests' | 'projects' | 'team' | 'analytics')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
+                  activeTab === tab.id
+                    ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-lg'
+                    : 'text-zinc-400 hover:bg-white/5 hover:text-white'
+                }`}
+              >
+                <tab.icon className="w-4 h-4" />
+                {tab.label}
+                {tab.badge && tab.badge > 0 && (
+                  <span className="bg-red-500 text-white text-xs px-1.5 py-0.5 rounded-full">
+                    {tab.badge}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
         </div>
+      </div>
 
-        {/* ==========================================
-            ALERTS
-        ========================================== */}
-        {stats.delayed > 0 && (
-          <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="bg-red-500/10 border border-red-500/30 rounded-xl p-4 flex items-center justify-between"
-          >
-            <div className="flex items-center gap-3">
-              <AlertTriangle className="w-5 h-5 text-red-400" />
-              <div>
-                <p className="font-semibold text-red-400">{stats.delayed} Delayed Project{stats.delayed !== 1 ? 's' : ''}</p>
-                <p className="text-sm text-zinc-400">Immediate attention required</p>
-              </div>
-            </div>
-            <button 
-              onClick={() => setStatusFilter('Delayed')}
-              className="px-3 py-1.5 bg-red-500/20 text-red-400 rounded-lg text-sm hover:bg-red-500/30 transition-colors"
-            >
-              View All
-            </button>
-          </motion.div>
-        )}
-
-        {stats.critical > 0 && (
-          <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="bg-orange-500/10 border border-orange-500/30 rounded-xl p-4 flex items-center justify-between"
-          >
-            <div className="flex items-center gap-3">
-              <Flag className="w-5 h-5 text-orange-400" />
-              <div>
-                <p className="font-semibold text-orange-400">{stats.critical} Critical Priority Project{stats.critical !== 1 ? 's' : ''}</p>
-                <p className="text-sm text-zinc-400">High priority items need focus</p>
-              </div>
-            </div>
-            <button 
-              onClick={() => setPriorityFilter('critical')}
-              className="px-3 py-1.5 bg-orange-500/20 text-orange-400 rounded-lg text-sm hover:bg-orange-500/30 transition-colors"
-            >
-              View All
-            </button>
-          </motion.div>
-        )}
-
-        {/* ==========================================
-            STATS CARDS
-        ========================================== */}
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="bg-zinc-900/50 border border-white/10 rounded-xl p-4"
-          >
-            <div className="flex items-center justify-between mb-2">
-              <Layers className="w-5 h-5 text-blue-400" />
-              <span className="text-xs text-green-400 flex items-center gap-1">
-                <ArrowUpRight className="w-3 h-3" /> +{Math.floor(Math.random() * 15)}%
-              </span>
-            </div>
-            <p className="text-2xl font-bold text-white">{stats.total}</p>
-            <p className="text-xs text-zinc-500">Total Projects</p>
-          </motion.div>
-          
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.05 }}
-            className="bg-zinc-900/50 border border-white/10 rounded-xl p-4"
-          >
-            <div className="flex items-center justify-between mb-2">
-              <CheckCircle className="w-5 h-5 text-green-400" />
-            </div>
-            <p className="text-2xl font-bold text-green-400">{stats.completed}</p>
-            <p className="text-xs text-zinc-500">Completed</p>
-          </motion.div>
-          
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-            className="bg-zinc-900/50 border border-white/10 rounded-xl p-4"
-          >
-            <div className="flex items-center justify-between mb-2">
-              <Timer className="w-5 h-5 text-blue-400" />
-            </div>
-            <p className="text-2xl font-bold text-blue-400">{stats.inProgress}</p>
-            <p className="text-xs text-zinc-500">In Progress</p>
-          </motion.div>
-          
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.15 }}
-            className="bg-zinc-900/50 border border-white/10 rounded-xl p-4"
-          >
-            <div className="flex items-center justify-between mb-2">
-              <Clock className="w-5 h-5 text-yellow-400" />
-            </div>
-            <p className="text-2xl font-bold text-yellow-400">{stats.pending}</p>
-            <p className="text-xs text-zinc-500">Pending</p>
-          </motion.div>
-          
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-            className="bg-zinc-900/50 border border-white/10 rounded-xl p-4"
-          >
-            <div className="flex items-center justify-between mb-2">
-              <Target className="w-5 h-5 text-cyan-400" />
-            </div>
-            <p className="text-2xl font-bold text-cyan-400">{stats.efficiency}%</p>
-            <p className="text-xs text-zinc-500">Avg Completion</p>
-          </motion.div>
-          
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.25 }}
-            className="bg-zinc-900/50 border border-white/10 rounded-xl p-4"
-          >
-            <div className="flex items-center justify-between mb-2">
-              <Box className="w-5 h-5 text-purple-400" />
-            </div>
-            <p className="text-2xl font-bold text-purple-400">{stats.producedParts.toLocaleString()}</p>
-            <p className="text-xs text-zinc-500">Parts Produced</p>
-          </motion.div>
-        </div>
-
-        {/* ==========================================
-            TABS
-        ========================================== */}
-        <div className="flex items-center gap-2 overflow-x-auto pb-2">
-          {tabs.map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id as any)}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium whitespace-nowrap transition-all ${
-                activeTab === tab.id
-                  ? 'bg-gradient-to-r from-purple-500 to-pink-600 text-white'
-                  : 'bg-zinc-800/50 text-zinc-400 hover:bg-zinc-800 hover:text-white'
-              }`}
-            >
-              <tab.icon className="w-4 h-4" />
-              {tab.label}
-            </button>
-          ))}
-        </div>
-
-        {/* ==========================================
-            OVERVIEW TAB
-        ========================================== */}
-        {activeTab === 'overview' && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Status Distribution */}
-            <div className="bg-zinc-900/50 border border-white/10 rounded-xl p-6">
-              <h3 className="text-lg font-semibold text-white mb-4">Project Status</h3>
-              <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
+      {/* Main Content */}
+      <div className="p-6 space-y-6">
+        {activeTab === 'dashboard' && (
+          <>
+            {renderKPICards()}
+            
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {/* Status Distribution */}
+              <div className="lg:col-span-1 bg-zinc-900/50 border border-white/10 rounded-xl p-6">
+                <h3 className="text-lg font-semibold mb-4">Status Distribution</h3>
+                <ResponsiveContainer width="100%" height={240}>
                   <PieChart>
                     <Pie
-                      data={statusChart.filter(d => d.value > 0)}
+                      data={statusChartData}
                       cx="50%"
                       cy="50%"
-                      innerRadius={50}
+                      innerRadius={60}
                       outerRadius={80}
-                      paddingAngle={5}
+                      paddingAngle={2}
                       dataKey="value"
                     >
-                      {statusChart.map((entry, index) => (
+                      {statusChartData.map((entry, index) => (
                         <Cell key={`cell-${index}`} fill={entry.color} />
                       ))}
                     </Pie>
-                    <Tooltip contentStyle={{ backgroundColor: '#18181b', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px' }} />
-                    <Legend />
+                    <Tooltip
+                      contentStyle={{ backgroundColor: '#18181b', border: '1px solid rgba(255,255,255,0.1)' }}
+                    />
                   </PieChart>
                 </ResponsiveContainer>
               </div>
-            </div>
 
-            {/* Production Progress */}
-            <div className="bg-zinc-900/50 border border-white/10 rounded-xl p-6">
-              <h3 className="text-lg font-semibold text-white mb-4">Production Progress</h3>
-              <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={chartData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-                    <XAxis dataKey="name" stroke="#888" tick={{ fontSize: 10 }} />
-                    <YAxis stroke="#888" />
-                    <Tooltip contentStyle={{ backgroundColor: '#18181b', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px' }} />
-                    <Bar dataKey="Actual" name="Produced" fill="#8b5cf6" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="Target" name="Target" fill="#3f3f46" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-
-            {/* Weekly Trend */}
-            <div className="bg-zinc-900/50 border border-white/10 rounded-xl p-6">
-              <h3 className="text-lg font-semibold text-white mb-4">Weekly Output</h3>
-              <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={weeklyData}>
+              {/* Weekly Trend */}
+              <div className="lg:col-span-2 bg-zinc-900/50 border border-white/10 rounded-xl p-6">
+                <h3 className="text-lg font-semibold mb-4">Weekly Trend</h3>
+                <ResponsiveContainer width="100%" height={240}>
+                  <AreaChart data={weeklyTrendData}>
                     <defs>
+                      <linearGradient id="colorNew" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor={COLORS.primary} stopOpacity={0.3} />
+                        <stop offset="95%" stopColor={COLORS.primary} stopOpacity={0} />
+                      </linearGradient>
                       <linearGradient id="colorCompleted" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.3} />
-                        <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0} />
+                        <stop offset="5%" stopColor={COLORS.success} stopOpacity={0.3} />
+                        <stop offset="95%" stopColor={COLORS.success} stopOpacity={0} />
                       </linearGradient>
                     </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-                    <XAxis dataKey="day" stroke="#888" />
-                    <YAxis stroke="#888" />
-                    <Tooltip contentStyle={{ backgroundColor: '#18181b', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px' }} />
-                    <Area type="monotone" dataKey="completed" stroke="#8b5cf6" fillOpacity={1} fill="url(#colorCompleted)" />
+                    <CartesianGrid strokeDasharray="3 3" stroke="#27272a" />
+                    <XAxis dataKey="date" stroke="#71717a" />
+                    <YAxis stroke="#71717a" />
+                    <Tooltip
+                      contentStyle={{ backgroundColor: '#18181b', border: '1px solid rgba(255,255,255,0.1)' }}
+                    />
+                    <Legend />
+                    <Area type="monotone" dataKey="new" stroke={COLORS.primary} fillOpacity={1} fill="url(#colorNew)" name="New" />
+                    <Area type="monotone" dataKey="completed" stroke={COLORS.success} fillOpacity={1} fill="url(#colorCompleted)" name="Completed" />
                   </AreaChart>
                 </ResponsiveContainer>
               </div>
             </div>
 
-            {/* Recent Projects */}
-            <div className="lg:col-span-2 bg-zinc-900/50 border border-white/10 rounded-xl p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold text-white">Recent Projects</h3>
-                <button onClick={() => setActiveTab('table')} className="text-sm text-purple-400 hover:text-purple-300 transition-colors">
-                  View All →
-                </button>
-              </div>
-              <div className="space-y-3">
-                {data.filter(p => p.projectCode).slice(0, 5).map(project => (
-                  <div 
-                    key={project.id} 
-                    className="flex items-center justify-between p-3 bg-zinc-800/50 rounded-lg hover:bg-zinc-800 transition-colors cursor-pointer"
-                    onClick={() => setShowQuickView(project)}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className={`w-2 h-2 rounded-full ${PRIORITY_COLORS[project.priority] || 'bg-zinc-500'}`} />
-                      <div>
-                        <p className="font-medium text-white">{project.projectCode}</p>
-                        <p className="text-xs text-zinc-500">{project.projectDescription || 'No Description'}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-4">
-                      <div className="text-right">
-                        <p className="text-sm text-zinc-300">{project.percentCompleted || 0}%</p>
-                        <div className="w-24 h-1.5 bg-zinc-700 rounded-full overflow-hidden">
-                          <div
-                            className="h-full bg-purple-500 rounded-full transition-all"
-                            style={{ width: `${project.percentCompleted || 0}%` }}
-                          />
-                        </div>
-                      </div>
-                      <span className={`px-2 py-1 rounded-full text-xs border ${STATUS_COLORS[project.status] || 'bg-zinc-500/20 text-zinc-400'}`}>
-                        {project.status}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-                {data.filter(p => p.projectCode).length === 0 && (
-                  <div className="text-center py-8 text-zinc-500">
-                    No projects yet. Create your first project!
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Upcoming Deadlines */}
+            {/* Recent Requests */}
             <div className="bg-zinc-900/50 border border-white/10 rounded-xl p-6">
-              <h3 className="text-lg font-semibold text-white mb-4">Upcoming Deadlines</h3>
-              <div className="space-y-3">
-                {data
-                  .filter(p => p.targetCompletionDate && getDaysUntil(p.targetCompletionDate) !== null && getDaysUntil(p.targetCompletionDate)! > 0)
-                  .sort((a, b) => new Date(a.targetCompletionDate).getTime() - new Date(b.targetCompletionDate).getTime())
-                  .slice(0, 5)
-                  .map(project => {
-                    const days = getDaysUntil(project.targetCompletionDate);
-                    return (
-                      <div key={project.id} className="flex items-center justify-between p-3 bg-zinc-800/50 rounded-lg">
-                        <div>
-                          <p className="font-medium text-white text-sm">{project.projectCode}</p>
-                          <p className="text-xs text-zinc-500">{project.destination || 'No destination'}</p>
-                        </div>
-                        <div className={`px-2 py-1 rounded-full text-xs ${
-                          days! <= 3 ? 'bg-red-500/20 text-red-400' :
-                          days! <= 7 ? 'bg-orange-500/20 text-orange-400' :
-                          'bg-green-500/20 text-green-400'
-                        }`}>
-                          {days} day{days !== 1 ? 's' : ''}
-                        </div>
-                      </div>
-                    );
-                  })}
-                {data.filter(p => p.targetCompletionDate).length === 0 && (
-                  <div className="text-center py-4 text-zinc-500 text-sm">
-                    No upcoming deadlines
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ==========================================
-            TABLE TAB
-        ========================================== */}
-        {activeTab === 'table' && (
-          <div className="bg-zinc-900/60 border border-white/10 rounded-2xl overflow-hidden backdrop-blur-xl shadow-2xl">
-            
-            {/* Toolbar */}
-            <div className="p-4 border-b border-white/10 flex flex-wrap justify-between items-center gap-4 bg-white/5">
-              <div className="flex gap-2 flex-wrap">
-                <button onClick={() => window.location.reload()} className="bg-blue-600 hover:bg-blue-500 text-white px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all">
-                  <RefreshCw className="w-3 h-3"/> Sync
-                </button>
-                <button onClick={() => fileInputRef.current?.click()} className="bg-green-600 hover:bg-green-500 text-white px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all">
-                  <Upload className="w-3 h-3"/> Import
-                  <input type="file" ref={fileInputRef} onChange={handleImport} className="hidden" accept=".xlsx" />
-                </button>
-                <button onClick={handleExport} className="bg-zinc-700 hover:bg-zinc-600 text-white px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all">
-                  <Download className="w-3 h-3"/> Export
-                </button>
-                <button onClick={clearAll} className="bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/20 px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all">
-                  <Trash2 className="w-3 h-3"/> Clear
-                </button>
-              </div>
-              
-              <div className="flex items-center gap-3">
-                <select
-                  value={statusFilter}
-                  onChange={e => setStatusFilter(e.target.value)}
-                  className="px-3 py-2 bg-zinc-800 border border-white/10 rounded-xl text-sm text-white"
-                >
-                  <option value="all">All Status</option>
-                  <option value="Pending">Pending</option>
-                  <option value="In Progress">In Progress</option>
-                  <option value="Completed">Completed</option>
-                  <option value="On Hold">On Hold</option>
-                  <option value="Delayed">Delayed</option>
-                </select>
-                
-                <select
-                  value={priorityFilter}
-                  onChange={e => setPriorityFilter(e.target.value)}
-                  className="px-3 py-2 bg-zinc-800 border border-white/10 rounded-xl text-sm text-white"
-                >
-                  <option value="all">All Priority</option>
-                  <option value="low">Low</option>
-                  <option value="medium">Medium</option>
-                  <option value="high">High</option>
-                  <option value="critical">Critical</option>
-                </select>
-                
-                <div className="relative">
-                  <Search className="absolute left-3 top-2.5 w-4 h-4 text-zinc-500" />
-                  <input 
-                    className="pl-9 pr-4 py-2 bg-zinc-800 border border-white/10 rounded-xl text-sm text-white outline-none focus:border-purple-500 transition-all w-48" 
-                    placeholder="Search..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Table */}
-            <div className="overflow-x-auto max-h-[600px] scrollbar-thin scrollbar-thumb-zinc-700 scrollbar-track-transparent">
-              <table className="w-full text-left text-sm border-collapse">
-                <thead className="bg-zinc-950 sticky top-0 z-10 shadow-lg">
-                  <tr>
-                    <th className="p-3 border-b border-r border-white/10 text-center w-10 text-zinc-500 text-xs">#</th>
-                    {COLUMNS.map(col => (
-                      <th key={col.id} className="p-3 border-b border-r border-white/10 text-zinc-400 font-bold text-xs uppercase tracking-wider whitespace-nowrap" style={{minWidth: col.width}}>
-                        {col.name}
-                      </th>
-                    ))}
-                    <th className="p-3 border-b border-white/10 text-zinc-500 text-center text-xs uppercase">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-white/5">
-                  {filteredData.map((row, i) => (
-                    <tr key={row.id} className="hover:bg-white/[0.02] transition-colors group">
-                      <td className="p-2 border-r border-white/5 text-center text-zinc-600 font-mono text-xs bg-black/20">{i + 1}</td>
-                      
-                      {COLUMNS.map(col => (
-                        <td key={col.id} className="p-0 border-r border-white/5 relative h-10">
-                          {col.id === 'percentCompleted' ? (
-                            <div className="w-full h-full flex items-center px-3 relative">
-                              <div className="absolute inset-0 bg-purple-500/10" style={{ width: `${Math.min(100, row.percentCompleted || 0)}%` }}></div>
-                              <span className={`relative z-10 font-bold text-xs ${(row.percentCompleted || 0) >= 100 ? 'text-green-400' : 'text-purple-400'}`}>
-                                {row.percentCompleted || 0}%
-                              </span>
-                            </div>
-                          ) : col.id === 'status' ? (
-                            <select
-                              value={row.status || 'Pending'}
-                              onChange={(e) => handleCellChange(data.indexOf(row), 'status', e.target.value)}
-                              className="w-full h-full bg-transparent px-2 text-xs text-white outline-none focus:bg-purple-500/10"
-                            >
-                              <option value="Pending">Pending</option>
-                              <option value="In Progress">In Progress</option>
-                              <option value="Completed">Completed</option>
-                              <option value="On Hold">On Hold</option>
-                              <option value="Delayed">Delayed</option>
-                            </select>
-                          ) : col.id === 'priority' ? (
-                            <select
-                              value={row.priority || 'medium'}
-                              onChange={(e) => handleCellChange(data.indexOf(row), 'priority', e.target.value)}
-                              className="w-full h-full bg-transparent px-2 text-xs text-white outline-none focus:bg-purple-500/10"
-                            >
-                              <option value="low">Low</option>
-                              <option value="medium">Medium</option>
-                              <option value="high">High</option>
-                              <option value="critical">Critical</option>
-                            </select>
-                          ) : col.id === 'assignedTeam' ? (
-                            <select
-                              value={row.assignedTeam || ''}
-                              onChange={(e) => handleCellChange(data.indexOf(row), 'assignedTeam', e.target.value)}
-                              className="w-full h-full bg-transparent px-2 text-xs text-white outline-none focus:bg-purple-500/10"
-                            >
-                              <option value="">Select Team</option>
-                              {TEAMS.map(team => (
-                                <option key={team} value={team}>{team}</option>
-                              ))}
-                            </select>
-                          ) : (
-                            <input 
-                              type={col.type || 'text'}
-                              readOnly={col.readOnly}
-                              className={`w-full h-full bg-transparent px-3 text-xs text-white outline-none focus:bg-purple-500/10 focus:shadow-[inset_2px_0_0_#8b5cf6] transition-all placeholder-zinc-700 ${col.readOnly ? 'text-zinc-500 cursor-not-allowed' : ''}`}
-                              value={(row as any)[col.id] || ''}
-                              onChange={(e) => handleCellChange(data.indexOf(row), col.id, e.target.value)}
-                            />
-                          )}
-                        </td>
-                      ))}
-
-                      <td className="p-2 text-center">
-                        <div className="flex items-center justify-center gap-1">
-                          <button 
-                            onClick={() => setShowQuickView(row)}
-                            className="p-1.5 bg-white/5 hover:bg-white/10 rounded-lg text-zinc-400 hover:text-white transition-colors"
-                            title="Quick View"
-                          >
-                            <Eye className="w-3 h-3" />
-                          </button>
-                          <button 
-                            onClick={() => {
-                              setSelectedProject({ id: row.projectCode || 'NEW', name: row.projectDescription || 'Project' });
-                              setShowBOMCreator(true);
-                            }}
-                            className="p-1.5 bg-purple-500/10 hover:bg-purple-500/20 rounded-lg text-purple-400 hover:text-purple-300 transition-colors"
-                            title="Create BOM"
-                          >
-                            <ClipboardList className="w-3 h-3" />
-                          </button>
-                          <button 
-                            onClick={() => deleteProject(row.id)}
-                            className="p-1.5 bg-red-500/10 hover:bg-red-500/20 rounded-lg text-red-400 hover:text-red-300 transition-colors"
-                            title="Delete"
-                          >
-                            <Trash2 className="w-3 h-3" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            
-            {filteredData.length === 0 && (
-              <div className="p-12 text-center">
-                <Layers className="w-16 h-16 text-zinc-600 mx-auto mb-4" />
-                <p className="text-zinc-500">No projects match your filters</p>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* ==========================================
-            CARDS TAB
-        ========================================== */}
-        {activeTab === 'cards' && (
-          <div>
-            {/* Filters */}
-            <div className="flex flex-wrap gap-4 mb-6">
-              <div className="relative flex-1 min-w-[200px]">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
-                <input
-                  type="text"
-                  placeholder="Search projects..."
-                  value={searchTerm}
-                  onChange={e => setSearchTerm(e.target.value)}
-                  className="w-full pl-11 pr-4 py-3 bg-zinc-900/50 border border-white/10 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-purple-500/50"
-                />
-              </div>
-              <select
-                value={statusFilter}
-                onChange={e => setStatusFilter(e.target.value)}
-                className="px-4 py-3 bg-zinc-900/50 border border-white/10 rounded-xl text-white"
-              >
-                <option value="all">All Status</option>
-                <option value="Pending">Pending</option>
-                <option value="In Progress">In Progress</option>
-                <option value="Completed">Completed</option>
-                <option value="On Hold">On Hold</option>
-                <option value="Delayed">Delayed</option>
-              </select>
-              <select
-                value={priorityFilter}
-                onChange={e => setPriorityFilter(e.target.value)}
-                className="px-4 py-3 bg-zinc-900/50 border border-white/10 rounded-xl text-white"
-              >
-                <option value="all">All Priority</option>
-                <option value="low">Low</option>
-                <option value="medium">Medium</option>
-                <option value="high">High</option>
-                <option value="critical">Critical</option>
-              </select>
-            </div>
-
-            {/* Cards Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {filteredData.filter(p => p.projectCode).map(project => (
-                <motion.div
-                  key={project.id}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="bg-zinc-900/50 border border-white/10 rounded-xl p-5 hover:border-purple-500/30 transition-all"
-                >
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex items-center gap-2">
-                      <div className={`w-2 h-2 rounded-full ${PRIORITY_COLORS[project.priority] || 'bg-zinc-500'}`} />
-                      <h3 className="font-semibold text-white">{project.projectCode}</h3>
-                    </div>
-                    <span className={`px-2 py-1 rounded-full text-xs border ${STATUS_COLORS[project.status] || 'bg-zinc-500/20 text-zinc-400'}`}>
-                      {project.status}
-                    </span>
-                  </div>
-
-                  <p className="text-sm text-zinc-400 mb-4 line-clamp-2">{project.projectDescription || 'No description'}</p>
-
-                  <div className="space-y-3 mb-4">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-zinc-500">Progress</span>
-                      <span className="text-white font-medium">{project.percentCompleted || 0}%</span>
-                    </div>
-                    <div className="w-full h-2 bg-zinc-800 rounded-full overflow-hidden">
-                      <div
-                        className={`h-full rounded-full transition-all ${
-                          (project.percentCompleted || 0) >= 100 ? 'bg-green-500' :
-                          (project.percentCompleted || 0) >= 50 ? 'bg-blue-500' :
-                          'bg-purple-500'
-                        }`}
-                        style={{ width: `${project.percentCompleted || 0}%` }}
-                      />
-                    </div>
-                    <div className="flex justify-between text-xs text-zinc-500">
-                      <span>{project.totalPartsProduced || 0} produced</span>
-                      <span>{project.totalParts || 0} total</span>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2 text-xs mb-4">
-                    <div className="bg-zinc-800/50 rounded-lg p-2">
-                      <p className="text-zinc-500">Destination</p>
-                      <p className="text-white truncate">{project.destination || '-'}</p>
-                    </div>
-                    <div className="bg-zinc-800/50 rounded-lg p-2">
-                      <p className="text-zinc-500">Target Date</p>
-                      <p className="text-white">{project.targetCompletionDate ? new Date(project.targetCompletionDate).toLocaleDateString() : '-'}</p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between pt-3 border-t border-white/5">
-                    <span className="text-xs text-zinc-500">{project.assignedTeam || 'No team'}</span>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => {
-                          setEditingProject(project);
-                          setShowProjectModal(true);
-                        }}
-                        className="p-2 hover:bg-white/10 rounded-lg transition-colors"
-                        title="Edit"
-                      >
-                        <Edit className="w-4 h-4 text-zinc-400" />
-                      </button>
-                      <button
-                        onClick={() => {
-                          setSelectedProject({ id: project.projectCode, name: project.projectDescription || 'Project' });
-                          setShowBOMCreator(true);
-                        }}
-                        className="p-2 hover:bg-purple-500/20 rounded-lg transition-colors"
-                        title="Create BOM"
-                      >
-                        <ClipboardList className="w-4 h-4 text-purple-400" />
-                      </button>
-                      <button
-                        onClick={() => deleteProject(project.id)}
-                        className="p-2 hover:bg-red-500/20 rounded-lg transition-colors"
-                        title="Delete"
-                      >
-                        <Trash2 className="w-4 h-4 text-red-400" />
-                      </button>
-                    </div>
-                  </div>
-                </motion.div>
-              ))}
-            </div>
-
-            {filteredData.filter(p => p.projectCode).length === 0 && (
-              <div className="bg-zinc-900/50 border border-white/10 rounded-xl p-12 text-center">
-                <Layers className="w-16 h-16 text-zinc-600 mx-auto mb-4" />
-                <h3 className="text-xl font-semibold text-zinc-400 mb-2">No Projects Found</h3>
-                <p className="text-zinc-500 mb-4">Create your first project or adjust filters</p>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold">Recent Requests</h3>
                 <button
-                  onClick={() => setShowProjectModal(true)}
-                  className="px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition-colors"
+                  onClick={() => setActiveTab('requests')}
+                  className="text-cyan-400 hover:text-cyan-300 text-sm flex items-center gap-1"
                 >
-                  Create Project
+                  View All <ChevronRight className="w-4 h-4" />
                 </button>
               </div>
-            )}
-          </div>
-        )}
-
-        {/* ==========================================
-            TIMELINE TAB
-        ========================================== */}
-        {activeTab === 'timeline' && (
-          <div className="bg-zinc-900/50 border border-white/10 rounded-xl p-6">
-            <h3 className="text-lg font-semibold text-white mb-6">Project Timeline</h3>
-            <div className="space-y-4">
-              {data
-                .filter(p => p.projectCode && p.targetCompletionDate)
-                .sort((a, b) => new Date(a.targetCompletionDate).getTime() - new Date(b.targetCompletionDate).getTime())
-                .map((project, index, arr) => {
-                  const days = getDaysUntil(project.targetCompletionDate);
-                  const isOverdue = days !== null && days < 0;
-                  return (
-                    <div key={project.id} className="flex gap-4">
-                      <div className="flex flex-col items-center">
-                        <div className={`w-4 h-4 rounded-full ${
-                          project.status === 'Completed' ? 'bg-green-500' :
-                          isOverdue ? 'bg-red-500' :
-                          'bg-purple-500'
-                        }`} />
-                        {index < arr.length - 1 && <div className="w-0.5 flex-1 bg-zinc-700 mt-2" />}
-                      </div>
-                      <div className="flex-1 pb-6">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <h4 className="font-medium text-white">{project.projectCode}</h4>
-                            <p className="text-sm text-zinc-400">{project.projectDescription}</p>
-                          </div>
-                          <div className="text-right">
-                            <p className={`text-sm font-medium ${isOverdue ? 'text-red-400' : 'text-zinc-300'}`}>
-                              {new Date(project.targetCompletionDate).toLocaleDateString()}
-                            </p>
-                            <p className={`text-xs ${
-                              isOverdue ? 'text-red-400' :
-                              days! <= 7 ? 'text-orange-400' :
-                              'text-zinc-500'
-                            }`}>
-                              {isOverdue ? `${Math.abs(days!)} days overdue` : `${days} days left`}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="mt-2 flex items-center gap-4">
-                          <div className="flex-1 h-2 bg-zinc-800 rounded-full overflow-hidden">
-                            <div
-                              className={`h-full rounded-full ${
-                                project.status === 'Completed' ? 'bg-green-500' : 'bg-purple-500'
-                              }`}
-                              style={{ width: `${project.percentCompleted || 0}%` }}
-                            />
-                          </div>
-                          <span className="text-sm text-zinc-400">{project.percentCompleted || 0}%</span>
-                        </div>
-                        <div className="flex items-center gap-4 mt-2 text-xs text-zinc-500">
-                          <span className="flex items-center gap-1">
-                            <Users className="w-3 h-3" /> {project.assignedTeam || 'No team'}
-                          </span>
-                          <span className="flex items-center gap-1">
-                            <Box className="w-3 h-3" /> {project.totalPartsProduced || 0}/{project.totalParts || 0} parts
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              {data.filter(p => p.projectCode && p.targetCompletionDate).length === 0 && (
-                <div className="text-center py-8 text-zinc-500">
-                  No projects with deadlines. Add target dates to see timeline.
-                </div>
-              )}
+              <div className="space-y-3">
+                {requests.slice(0, 5).map((request) => (
+                  <RequestCard key={request.id} request={request} onSelect={setSelectedRequest} compact />
+                ))}
+              </div>
             </div>
-          </div>
+          </>
         )}
 
-        {/* Floating Add Button */}
-        <button 
-          onClick={addNewRow}
-          className="fixed bottom-10 right-10 w-14 h-14 bg-gradient-to-r from-purple-500 to-pink-600 hover:opacity-90 rounded-full shadow-2xl shadow-purple-900/50 flex items-center justify-center text-white transition-transform hover:scale-110 z-50"
-        >
-          <Plus className="w-6 h-6" />
-        </button>
+        {activeTab === 'requests' && (
+          <RequestsView
+            requests={filteredRequests}
+            viewMode={viewMode}
+            onViewModeChange={setViewMode}
+            onSelect={setSelectedRequest}
+            onStatusUpdate={handleStatusUpdate}
+            onPriorityUpdate={handlePriorityUpdate}
+            onStarToggle={handleStarToggle}
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
+          />
+        )}
 
+        {activeTab === 'projects' && (
+          <ProjectsDataView
+            projects={pmProjects}
+            onCreateBOM={(project) => {
+              setSelectedProject({ id: project.projectCode, name: project.projectDescription });
+              setShowBOMCreator(true);
+            }}
+          />
+        )}
+
+        {activeTab === 'team' && (
+          <TeamView teamMembers={teamMembers} />
+        )}
+
+        {activeTab === 'analytics' && (
+          <AnalyticsView stats={stats} />
+        )}
       </div>
 
-      {/* ==========================================
-          BOM CREATOR MODAL
-      ========================================== */}
-      {selectedProject && (
-        <BOMCreator
-          isOpen={showBOMCreator}
+      {/* Request Detail Modal */}
+      <AnimatePresence>
+        {selectedRequest && (
+          <RequestDetailModal
+            request={selectedRequest}
+            onClose={() => setSelectedRequest(null)}
+            onStatusUpdate={handleStatusUpdate}
+            onPriorityUpdate={handlePriorityUpdate}
+            onCreateBOM={() => {
+              setSelectedProject({ 
+                id: selectedRequest.projectNumber, 
+                name: selectedRequest.projectName 
+              });
+              setShowBOMCreator(true);
+              setSelectedRequest(null);
+            }}
+            materials={materials}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Advanced BOM Creator Modal */}
+      {showBOMCreator && selectedProject && (
+        <AdvancedBOMCreator
+          projectId={selectedProject.id}
+          projectName={selectedProject.name}
           onClose={() => {
             setShowBOMCreator(false);
             setSelectedProject(null);
           }}
-          projectId={selectedProject.id}
-          projectName={selectedProject.name}
         />
       )}
-
-      {/* ==========================================
-          QUICK VIEW MODAL
-      ========================================== */}
-      <AnimatePresence>
-        {showQuickView && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-            onClick={() => setShowQuickView(null)}
-          >
-            <motion.div
-              initial={{ scale: 0.95 }}
-              animate={{ scale: 1 }}
-              exit={{ scale: 0.95 }}
-              className="bg-zinc-900 border border-white/10 rounded-2xl w-full max-w-lg overflow-hidden"
-              onClick={e => e.stopPropagation()}
-            >
-              <div className="flex items-center justify-between p-6 border-b border-white/10">
-                <div>
-                  <h2 className="text-xl font-bold text-white">{showQuickView.projectCode}</h2>
-                  <p className="text-sm text-zinc-400">{showQuickView.projectDescription}</p>
-                </div>
-                <button onClick={() => setShowQuickView(null)} className="p-2 hover:bg-white/10 rounded-lg">
-                  <X className="w-5 h-5 text-zinc-400" />
-                </button>
-              </div>
-              <div className="p-6 space-y-4">
-                <div className="flex items-center justify-between">
-                  <span className="text-zinc-400">Status</span>
-                  <span className={`px-3 py-1 rounded-full text-sm border ${STATUS_COLORS[showQuickView.status]}`}>
-                    {showQuickView.status}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-zinc-400">Priority</span>
-                  <div className="flex items-center gap-2">
-                    <div className={`w-2 h-2 rounded-full ${PRIORITY_COLORS[showQuickView.priority]}`} />
-                    <span className="text-white capitalize">{showQuickView.priority}</span>
-                  </div>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-zinc-400">Progress</span>
-                  <span className="text-white font-bold">{showQuickView.percentCompleted || 0}%</span>
-                </div>
-                <div className="w-full h-3 bg-zinc-800 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-gradient-to-r from-purple-500 to-pink-500 rounded-full"
-                    style={{ width: `${showQuickView.percentCompleted || 0}%` }}
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-4 pt-4">
-                  <div className="bg-zinc-800/50 rounded-lg p-3">
-                    <p className="text-xs text-zinc-500">Total Parts</p>
-                    <p className="text-lg font-bold text-white">{showQuickView.totalParts || 0}</p>
-                  </div>
-                  <div className="bg-zinc-800/50 rounded-lg p-3">
-                    <p className="text-xs text-zinc-500">Produced</p>
-                    <p className="text-lg font-bold text-green-400">{showQuickView.totalPartsProduced || 0}</p>
-                  </div>
-                  <div className="bg-zinc-800/50 rounded-lg p-3">
-                    <p className="text-xs text-zinc-500">Destination</p>
-                    <p className="text-sm text-white">{showQuickView.destination || '-'}</p>
-                  </div>
-                  <div className="bg-zinc-800/50 rounded-lg p-3">
-                    <p className="text-xs text-zinc-500">Target Date</p>
-                    <p className="text-sm text-white">
-                      {showQuickView.targetCompletionDate 
-                        ? new Date(showQuickView.targetCompletionDate).toLocaleDateString() 
-                        : '-'}
-                    </p>
-                  </div>
-                </div>
-                {showQuickView.remarks && (
-                  <div className="bg-zinc-800/50 rounded-lg p-3">
-                    <p className="text-xs text-zinc-500 mb-1">Remarks</p>
-                    <p className="text-sm text-white">{showQuickView.remarks}</p>
-                  </div>
-                )}
-              </div>
-              <div className="flex items-center gap-3 p-6 border-t border-white/10">
-                <button
-                  onClick={() => {
-                    setEditingProject(showQuickView);
-                    setShowQuickView(null);
-                    setShowProjectModal(true);
-                  }}
-                  className="flex-1 px-4 py-2.5 bg-zinc-800 text-white rounded-xl hover:bg-zinc-700 transition-colors"
-                >
-                  Edit Project
-                </button>
-                <button
-                  onClick={() => {
-                    setSelectedProject({ id: showQuickView.projectCode, name: showQuickView.projectDescription || 'Project' });
-                    setShowQuickView(null);
-                    setShowBOMCreator(true);
-                  }}
-                  className="flex-1 px-4 py-2.5 bg-gradient-to-r from-purple-500 to-pink-600 text-white font-semibold rounded-xl hover:opacity-90 transition-opacity"
-                >
-                  Create BOM
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* ==========================================
-          PROJECT MODAL
-      ========================================== */}
-      <AnimatePresence>
-        {showProjectModal && (
-          <ProjectModal
-            project={editingProject}
-            onClose={() => {
-              setShowProjectModal(false);
-              setEditingProject(null);
-            }}
-            onSave={(data) => {
-              if (editingProject) {
-                updateProject(editingProject.id, data);
-              } else {
-                addProject(data);
-              }
-            }}
-          />
-        )}
-      </AnimatePresence>
     </div>
   );
 }
 
 // ==========================================
-// PROJECT MODAL COMPONENT
+// KPI CARD COMPONENT
 // ==========================================
-function ProjectModal({
-  project,
-  onClose,
-  onSave
-}: {
-  project: Project | null;
+interface KPICardProps {
+  icon: React.ReactNode;
+  label: string;
+  value: number | string;
+  subtitle?: string;
+  trend?: 'up' | 'down' | 'stable';
+  trendValue?: number;
+  badge?: string;
+  color: string;
+}
+
+function KPICard({ icon, label, value, subtitle, trend, trendValue, badge, color }: KPICardProps) {
+  return (
+    <motion.div
+      whileHover={{ scale: 1.02, y: -2 }}
+      className="bg-zinc-900/50 border border-white/10 rounded-xl p-5 relative overflow-hidden"
+    >
+      <div className={`absolute top-0 right-0 w-32 h-32 bg-gradient-to-br ${color} opacity-10 blur-3xl`} />
+      
+      <div className="relative">
+        <div className={`inline-flex p-2.5 rounded-lg bg-gradient-to-br ${color} bg-opacity-20 mb-3`}>
+          {icon}
+        </div>
+        
+        <p className="text-zinc-400 text-sm mb-1">{label}</p>
+        <div className="flex items-end gap-2">
+          <p className="text-3xl font-bold">{value}</p>
+          {subtitle && <p className="text-zinc-500 text-sm pb-1">{subtitle}</p>}
+        </div>
+        
+        {badge && (
+          <span className="inline-block mt-2 text-xs bg-red-500/20 text-red-400 px-2 py-1 rounded">
+            {badge}
+          </span>
+        )}
+        
+        {trend && trendValue && (
+          <div className={`flex items-center gap-1 mt-2 text-xs ${
+            trend === 'up' ? 'text-green-400' : trend === 'down' ? 'text-red-400' : 'text-zinc-400'
+          }`}>
+            {trend === 'up' ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
+            <span>{trendValue}% vs last month</span>
+          </div>
+        )}
+      </div>
+    </motion.div>
+  );
+}
+
+// ==========================================
+// REQUEST CARD COMPONENT
+// ==========================================
+interface RequestCardProps {
+  request: CustomerRequest;
+  onSelect: (request: CustomerRequest) => void;
+  compact?: boolean;
+}
+
+function RequestCard({ request, onSelect, compact = false }: RequestCardProps) {
+  const priority = PRIORITY_CONFIG[request.priority || 'medium'];
+  const isDelayed = request.deliveryDate && new Date(request.deliveryDate) < new Date() && request.status !== 'Completed';
+
+  return (
+    <motion.div
+      whileHover={{ scale: 1.01 }}
+      onClick={() => onSelect(request)}
+      className={`bg-zinc-900/50 border border-white/10 rounded-xl p-4 cursor-pointer hover:border-cyan-500/50 transition-all ${
+        compact ? '' : 'lg:p-6'
+      }`}
+    >
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-xs text-zinc-500">{request.docNo}</span>
+            {request.starred && <Star className="w-3 h-3 text-yellow-500 fill-yellow-500" />}
+            {isDelayed && <AlertTriangle className="w-3 h-3 text-red-400" />}
+          </div>
+          
+          <h4 className="font-semibold text-white truncate mb-1">{request.projectName}</h4>
+          <p className="text-sm text-zinc-400 truncate">{request.customerName}</p>
+          
+          {!compact && (
+            <div className="flex items-center gap-4 mt-3 text-xs text-zinc-500">
+              <span className="flex items-center gap-1">
+                <Calendar className="w-3 h-3" />
+                {new Date(request.deliveryDate).toLocaleDateString()}
+              </span>
+              <span className="flex items-center gap-1">
+                <Package className="w-3 h-3" />
+                Qty: {request.quantity}
+              </span>
+              <span className="flex items-center gap-1">
+                <DollarSign className="w-3 h-3" />
+                ₹{(request.targetCost || 0).toLocaleString()}
+              </span>
+            </div>
+          )}
+        </div>
+        
+        <div className="flex flex-col items-end gap-2">
+          <span className={`text-xs px-2 py-1 rounded ${priority.color} text-white`}>
+            {priority.icon} {priority.label}
+          </span>
+          <span className="text-xs px-2 py-1 rounded bg-zinc-800 text-zinc-300">
+            {request.status}
+          </span>
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+// ==========================================
+// REQUESTS VIEW
+// ==========================================
+interface RequestsViewProps {
+  requests: CustomerRequest[];
+  viewMode: string;
+  onViewModeChange: (mode: 'grid' | 'list' | 'kanban' | 'timeline') => void;
+  onSelect: (request: CustomerRequest) => void;
+  onStatusUpdate: (id: string, status: string) => void;
+  onPriorityUpdate: (id: string, priority: string) => void;
+  onStarToggle: (request: CustomerRequest) => void;
+  searchQuery: string;
+  onSearchChange: (query: string) => void;
+}
+
+function RequestsView({ 
+  requests, 
+  viewMode, 
+  onViewModeChange, 
+  onSelect, 
+  searchQuery, 
+  onSearchChange 
+}: RequestsViewProps) {
+  return (
+    <div className="space-y-4">
+      {/* Toolbar */}
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex-1 max-w-md relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-400" />
+          <input
+            type="text"
+            placeholder="Search projects, customers..."
+            value={searchQuery}
+            onChange={(e) => onSearchChange(e.target.value)}
+            className="w-full bg-zinc-900 border border-white/10 rounded-lg pl-10 pr-4 py-2 text-sm focus:outline-none focus:border-cyan-500"
+          />
+        </div>
+        
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => onViewModeChange('grid')}
+            className={`p-2 rounded-lg ${viewMode === 'grid' ? 'bg-cyan-500 text-white' : 'bg-zinc-800 text-zinc-400'}`}
+          >
+            <Grid className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => onViewModeChange('list')}
+            className={`p-2 rounded-lg ${viewMode === 'list' ? 'bg-cyan-500 text-white' : 'bg-zinc-800 text-zinc-400'}`}
+          >
+            <List className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => onViewModeChange('kanban')}
+            className={`p-2 rounded-lg ${viewMode === 'kanban' ? 'bg-cyan-500 text-white' : 'bg-zinc-800 text-zinc-400'}`}
+          >
+            <Kanban className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+
+      {/* Content */}
+      {viewMode === 'grid' && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {requests.map((request) => (
+            <RequestCard key={request.id} request={request} onSelect={onSelect} />
+          ))}
+        </div>
+      )}
+
+      {viewMode === 'list' && (
+        <div className="space-y-2">
+          {requests.map((request) => (
+            <RequestCard key={request.id} request={request} onSelect={onSelect} compact />
+          ))}
+        </div>
+      )}
+
+      {viewMode === 'kanban' && (
+        <KanbanBoard requests={requests} onSelect={onSelect} />
+      )}
+
+      {requests.length === 0 && (
+        <div className="text-center py-12 text-zinc-500">
+          <ClipboardList className="w-12 h-12 mx-auto mb-3 opacity-50" />
+          <p>No requests found</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ==========================================
+// KANBAN BOARD
+// ==========================================
+function KanbanBoard({ requests, onSelect }: { requests: CustomerRequest[]; onSelect: (request: CustomerRequest) => void }) {
+  return (
+    <div className="flex gap-4 overflow-x-auto pb-4">
+      {STATUS_WORKFLOW.map((status) => {
+        const statusRequests = requests.filter(r => r.status === status.id);
+        
+        return (
+          <div key={status.id} className="flex-shrink-0 w-80">
+            <div className="bg-zinc-900/50 border border-white/10 rounded-xl p-4">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-semibold text-sm">{status.label}</h3>
+                <span className="text-xs bg-zinc-800 px-2 py-1 rounded">{statusRequests.length}</span>
+              </div>
+              
+              <div className="space-y-3 max-h-[calc(100vh-300px)] overflow-y-auto">
+                {statusRequests.map((request) => (
+                  <RequestCard key={request.id} request={request} onSelect={onSelect} compact />
+                ))}
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ==========================================
+// REQUEST DETAIL MODAL
+// ==========================================
+interface RequestDetailModalProps {
+  request: CustomerRequest;
   onClose: () => void;
-  onSave: (data: Partial<Project>) => void;
-}) {
-  const [formData, setFormData] = useState<Partial<Project>>(project || {
-    projectCode: '',
-    projectDescription: '',
-    destination: '',
-    poReference: '',
-    targetCompletionDate: '',
-    totalParts: 0,
-    totalPartsProduced: 0,
-    status: 'Pending',
-    priority: 'medium',
-    assignedTeam: '',
-    remarks: '',
-  });
+  onStatusUpdate: (id: string, status: string) => void;
+  onPriorityUpdate: (id: string, priority: string) => void;
+  onCreateBOM: () => void;
+  materials?: Material[];
+}
+
+function RequestDetailModal({ request, onClose, onStatusUpdate, onPriorityUpdate, onCreateBOM }: RequestDetailModalProps) {
+  const [activeSection, setActiveSection] = useState<'details' | 'bom' | 'notes' | 'timeline'>('details');
 
   return (
     <motion.div
@@ -1338,164 +922,467 @@ function ProjectModal({
       onClick={onClose}
     >
       <motion.div
-        initial={{ scale: 0.95 }}
-        animate={{ scale: 1 }}
-        exit={{ scale: 0.95 }}
-        className="bg-zinc-900 border border-white/10 rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden"
-        onClick={e => e.stopPropagation()}
+        initial={{ scale: 0.9, y: 20 }}
+        animate={{ scale: 1, y: 0 }}
+        exit={{ scale: 0.9, y: 20 }}
+        onClick={(e) => e.stopPropagation()}
+        className="bg-zinc-900 border border-white/10 rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col"
       >
-        <div className="flex items-center justify-between p-6 border-b border-white/10">
-          <h2 className="text-xl font-bold text-white">{project ? 'Edit Project' : 'New Project'}</h2>
-          <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-lg">
-            <X className="w-5 h-5 text-zinc-400" />
-          </button>
-        </div>
-
-        <div className="p-6 overflow-y-auto max-h-[calc(90vh-150px)] space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+        {/* Header */}
+        <div className="p-6 border-b border-white/10">
+          <div className="flex items-start justify-between">
             <div>
-              <label className="block text-sm text-zinc-400 mb-1">Project Code *</label>
-              <input
-                type="text"
-                value={formData.projectCode || ''}
-                onChange={e => setFormData({ ...formData, projectCode: e.target.value })}
-                className="w-full px-4 py-2.5 bg-zinc-800 border border-white/10 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-purple-500/50"
-                placeholder="e.g., PRJ-001"
-              />
+              <p className="text-xs text-zinc-500 mb-1">{request.docNo}</p>
+              <h2 className="text-2xl font-bold">{request.projectName}</h2>
+              <p className="text-zinc-400 mt-1">{request.customerName}</p>
             </div>
-            <div>
-              <label className="block text-sm text-zinc-400 mb-1">PO Reference</label>
-              <input
-                type="text"
-                value={formData.poReference || ''}
-                onChange={e => setFormData({ ...formData, poReference: e.target.value })}
-                className="w-full px-4 py-2.5 bg-zinc-800 border border-white/10 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-purple-500/50"
-                placeholder="PO Number"
-              />
-            </div>
+            <button onClick={onClose} className="p-2 hover:bg-white/5 rounded-lg">
+              <X className="w-5 h-5" />
+            </button>
           </div>
-
-          <div>
-            <label className="block text-sm text-zinc-400 mb-1">Project Description</label>
-            <textarea
-              value={formData.projectDescription || ''}
-              onChange={e => setFormData({ ...formData, projectDescription: e.target.value })}
-              className="w-full px-4 py-2.5 bg-zinc-800 border border-white/10 rounded-xl text-white resize-none h-20 focus:outline-none focus:ring-2 focus:ring-purple-500/50"
-              placeholder="Describe the project..."
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm text-zinc-400 mb-1">Destination</label>
-              <input
-                type="text"
-                value={formData.destination || ''}
-                onChange={e => setFormData({ ...formData, destination: e.target.value })}
-                className="w-full px-4 py-2.5 bg-zinc-800 border border-white/10 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-purple-500/50"
-                placeholder="Delivery destination"
-              />
-            </div>
-            <div>
-              <label className="block text-sm text-zinc-400 mb-1">Target Date</label>
-              <input
-                type="date"
-                value={formData.targetCompletionDate || ''}
-                onChange={e => setFormData({ ...formData, targetCompletionDate: e.target.value })}
-                className="w-full px-4 py-2.5 bg-zinc-800 border border-white/10 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-purple-500/50"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-3 gap-4">
-            <div>
-              <label className="block text-sm text-zinc-400 mb-1">Total Parts</label>
-              <input
-                type="number"
-                value={formData.totalParts || ''}
-                onChange={e => setFormData({ ...formData, totalParts: parseInt(e.target.value) || 0 })}
-                className="w-full px-4 py-2.5 bg-zinc-800 border border-white/10 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-purple-500/50"
-                placeholder="0"
-              />
-            </div>
-            <div>
-              <label className="block text-sm text-zinc-400 mb-1">Produced</label>
-              <input
-                type="number"
-                value={formData.totalPartsProduced || ''}
-                onChange={e => setFormData({ ...formData, totalPartsProduced: parseInt(e.target.value) || 0 })}
-                className="w-full px-4 py-2.5 bg-zinc-800 border border-white/10 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-purple-500/50"
-                placeholder="0"
-              />
-            </div>
-            <div>
-              <label className="block text-sm text-zinc-400 mb-1">Assigned Team</label>
-              <select
-                value={formData.assignedTeam || ''}
-                onChange={e => setFormData({ ...formData, assignedTeam: e.target.value })}
-                className="w-full px-4 py-2.5 bg-zinc-800 border border-white/10 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-purple-500/50"
+          
+          {/* Tabs */}
+          <div className="flex gap-2 mt-4">
+            {[
+              { id: 'details', label: 'Details', icon: FileText },
+              { id: 'bom', label: 'BOM', icon: Box },
+              { id: 'notes', label: 'Notes', icon: MessageSquare },
+              { id: 'timeline', label: 'Timeline', icon: Clock },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveSection(tab.id as 'details' | 'bom' | 'notes' | 'timeline')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm transition-colors ${
+                  activeSection === tab.id
+                    ? 'bg-cyan-500 text-white'
+                    : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+                }`}
               >
-                <option value="">Select Team</option>
-                {TEAMS.map(team => (
-                  <option key={team} value={team}>{team}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm text-zinc-400 mb-1">Priority</label>
-              <select
-                value={formData.priority || 'medium'}
-                onChange={e => setFormData({ ...formData, priority: e.target.value as any })}
-                className="w-full px-4 py-2.5 bg-zinc-800 border border-white/10 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-purple-500/50"
-              >
-                <option value="low">Low</option>
-                <option value="medium">Medium</option>
-                <option value="high">High</option>
-                <option value="critical">Critical</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm text-zinc-400 mb-1">Status</label>
-              <select
-                value={formData.status || 'Pending'}
-                onChange={e => setFormData({ ...formData, status: e.target.value as any })}
-                className="w-full px-4 py-2.5 bg-zinc-800 border border-white/10 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-purple-500/50"
-              >
-                <option value="Pending">Pending</option>
-                <option value="In Progress">In Progress</option>
-                <option value="Completed">Completed</option>
-                <option value="On Hold">On Hold</option>
-                <option value="Delayed">Delayed</option>
-              </select>
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm text-zinc-400 mb-1">Remarks</label>
-            <textarea
-              value={formData.remarks || ''}
-              onChange={e => setFormData({ ...formData, remarks: e.target.value })}
-              className="w-full px-4 py-2.5 bg-zinc-800 border border-white/10 rounded-xl text-white resize-none h-16 focus:outline-none focus:ring-2 focus:ring-purple-500/50"
-              placeholder="Additional notes..."
-            />
+                <tab.icon className="w-4 h-4" />
+                {tab.label}
+              </button>
+            ))}
           </div>
         </div>
 
-        <div className="flex items-center justify-end gap-3 p-6 border-t border-white/10">
-          <button onClick={onClose} className="px-4 py-2 text-zinc-400 hover:text-white transition-colors">
-            Cancel
-          </button>
-          <button
-            onClick={() => onSave(formData)}
-            className="px-6 py-2.5 bg-gradient-to-r from-purple-500 to-pink-600 text-white font-semibold rounded-xl hover:opacity-90 transition-opacity"
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto p-6">
+          {activeSection === 'details' && (
+            <div className="space-y-6">
+              <div className="grid grid-cols-2 gap-4">
+                <InfoField label="Project Number" value={request.projectNumber} />
+                <InfoField label="Customer Email" value={request.customerEmail} />
+                <InfoField label="Quantity" value={request.quantity.toString()} />
+                <InfoField label="Target Cost" value={`₹${request.targetCost?.toLocaleString() || 0}`} />
+                <InfoField label="Start Date" value={new Date(request.startDate).toLocaleDateString()} />
+                <InfoField label="Delivery Date" value={new Date(request.deliveryDate).toLocaleDateString()} />
+              </div>
+              
+              <div>
+                <label className="block text-sm text-zinc-400 mb-2">Description</label>
+                <p className="text-white bg-zinc-800 p-4 rounded-lg">{request.description}</p>
+              </div>
+              
+              <div>
+                <label className="block text-sm text-zinc-400 mb-2">Process</label>
+                <p className="text-white bg-zinc-800 p-4 rounded-lg">{request.process}</p>
+              </div>
+              
+              <div>
+                <label className="block text-sm text-zinc-400 mb-2">Deliverables</label>
+                <p className="text-white bg-zinc-800 p-4 rounded-lg">{request.deliverables}</p>
+              </div>
+            </div>
+          )}
+          
+          {activeSection === 'bom' && (
+            <div className="text-center py-12 text-zinc-500">
+              <Box className="w-12 h-12 mx-auto mb-3 opacity-50" />
+              <p>BOM Builder Integration</p>
+              <button 
+                onClick={() => {
+                  onCreateBOM();
+                  onClose();
+                }}
+                className="mt-4 px-4 py-2 bg-cyan-500 text-white rounded-lg hover:bg-cyan-600"
+              >
+                Create BOM
+              </button>
+            </div>
+          )}
+          
+          {activeSection === 'notes' && (
+            <div className="space-y-4">
+              <textarea
+                placeholder="Add notes..."
+                className="w-full bg-zinc-800 border border-white/10 rounded-lg p-4 text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-500"
+                rows={10}
+              />
+              <button className="px-4 py-2 bg-cyan-500 text-white rounded-lg hover:bg-cyan-600">
+                Save Notes
+              </button>
+            </div>
+          )}
+          
+          {activeSection === 'timeline' && (
+            <div className="space-y-4">
+              <TimelineItem
+                date={request.createdAt}
+                title="Request Created"
+                description={`Created by ${request.customerName}`}
+                icon={<Plus className="w-4 h-4" />}
+              />
+              <TimelineItem
+                date={new Date().toISOString()}
+                title="Under Review"
+                description="PM reviewing requirements"
+                icon={<Eye className="w-4 h-4" />}
+              />
+            </div>
+          )}
+        </div>
+
+        {/* Footer Actions */}
+        <div className="p-6 border-t border-white/10 flex gap-3">
+          <select
+            value={request.status}
+            onChange={(e) => onStatusUpdate(request.id, e.target.value)}
+            className="flex-1 bg-zinc-800 border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-cyan-500"
           >
-            {project ? 'Update Project' : 'Create Project'}
+            {STATUS_WORKFLOW.map((status) => (
+              <option key={status.id} value={status.id}>{status.label}</option>
+            ))}
+          </select>
+          
+          <select
+            value={request.priority || 'medium'}
+            onChange={(e) => onPriorityUpdate(request.id, e.target.value)}
+            className="bg-zinc-800 border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-cyan-500"
+          >
+            {Object.entries(PRIORITY_CONFIG).map(([key, config]) => (
+              <option key={key} value={key}>{config.label}</option>
+            ))}
+          </select>
+          
+          <button className="px-6 py-2 bg-cyan-500 text-white rounded-lg hover:bg-cyan-600 flex items-center gap-2">
+            <Send className="w-4 h-4" />
+            Action
           </button>
         </div>
       </motion.div>
     </motion.div>
+  );
+}
+
+// ==========================================
+// HELPER COMPONENTS
+// ==========================================
+function InfoField({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <label className="block text-xs text-zinc-500 mb-1">{label}</label>
+      <p className="text-white font-medium">{value}</p>
+    </div>
+  );
+}
+
+function TimelineItem({ date, title, description, icon }: {
+  date: string;
+  title: string;
+  description: string;
+  icon: React.ReactNode;
+}) {
+  return (
+    <div className="flex gap-4">
+      <div className="flex flex-col items-center">
+        <div className="w-8 h-8 rounded-full bg-cyan-500/20 flex items-center justify-center text-cyan-400">
+          {icon}
+        </div>
+        <div className="w-0.5 h-full bg-zinc-800 mt-2" />
+      </div>
+      <div className="flex-1 pb-8">
+        <p className="text-xs text-zinc-500">{new Date(date).toLocaleString()}</p>
+        <p className="font-semibold mt-1">{title}</p>
+        <p className="text-sm text-zinc-400 mt-1">{description}</p>
+      </div>
+    </div>
+  );
+}
+
+function TeamView({ teamMembers }: { teamMembers: TeamMember[] }) {
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      {teamMembers.map((member) => (
+        <div key={member.id} className="bg-zinc-900/50 border border-white/10 rounded-xl p-6">
+          <div className="flex items-center gap-4 mb-4">
+            <div className="w-12 h-12 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-full flex items-center justify-center text-white font-bold">
+              {member.name.charAt(0)}
+            </div>
+            <div>
+              <h3 className="font-semibold">{member.name}</h3>
+              <p className="text-sm text-zinc-400">{member.role}</p>
+            </div>
+          </div>
+          
+          <div className="space-y-3">
+            <div>
+              <div className="flex justify-between text-sm mb-1">
+                <span className="text-zinc-400">Active Projects</span>
+                <span className="text-white">{member.activeProjects}</span>
+              </div>
+            </div>
+            
+            <div>
+              <div className="flex justify-between text-sm mb-1">
+                <span className="text-zinc-400">Capacity</span>
+                <span className="text-white">{member.capacity}%</span>
+              </div>
+              <div className="w-full bg-zinc-800 rounded-full h-2">
+                <div
+                  className={`h-2 rounded-full ${member.capacity > 80 ? 'bg-red-500' : 'bg-cyan-500'}`}
+                  style={{ width: `${member.capacity}%` }}
+                />
+              </div>
+            </div>
+            
+            <div>
+              <div className="flex justify-between text-sm mb-1">
+                <span className="text-zinc-400">Efficiency</span>
+                <span className="text-green-400">{member.efficiency}%</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+interface StatsType {
+  total: number;
+  completed: number;
+  inProgress: number;
+  pending: number;
+  delayed: number;
+  critical: number;
+  completionRate: number;
+  totalValue: number;
+  completedValue: number;
+  avgCompletionTime: number;
+}
+
+function AnalyticsView({ stats }: { stats: StatsType }) {
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="bg-zinc-900/50 border border-white/10 rounded-xl p-6">
+          <p className="text-zinc-400 text-sm mb-1">Total Value</p>
+          <p className="text-3xl font-bold">₹{(stats.totalValue / 100000).toFixed(1)}L</p>
+          <p className="text-xs text-zinc-500 mt-2">Across all projects</p>
+        </div>
+        
+        <div className="bg-zinc-900/50 border border-white/10 rounded-xl p-6">
+          <p className="text-zinc-400 text-sm mb-1">Completed Value</p>
+          <p className="text-3xl font-bold text-green-400">₹{(stats.completedValue / 100000).toFixed(1)}L</p>
+          <p className="text-xs text-zinc-500 mt-2">Successfully delivered</p>
+        </div>
+        
+        <div className="bg-zinc-900/50 border border-white/10 rounded-xl p-6">
+          <p className="text-zinc-400 text-sm mb-1">Completion Rate</p>
+          <p className="text-3xl font-bold text-cyan-400">{stats.completionRate}%</p>
+          <p className="text-xs text-zinc-500 mt-2">Overall performance</p>
+        </div>
+        
+        <div className="bg-zinc-900/50 border border-white/10 rounded-xl p-6">
+          <p className="text-zinc-400 text-sm mb-1">Avg Delay</p>
+          <p className="text-3xl font-bold text-orange-400">{Math.abs(stats.avgCompletionTime)}h</p>
+          <p className="text-xs text-zinc-500 mt-2">Time variance</p>
+        </div>
+      </div>
+      
+      <div className="bg-zinc-900/50 border border-white/10 rounded-xl p-6">
+        <h3 className="text-lg font-semibold mb-4">Performance Insights</h3>
+        <div className="space-y-4">
+          <div className="flex items-center justify-between py-3 border-b border-white/5">
+            <span className="text-zinc-400">On-Time Delivery Rate</span>
+            <span className="text-green-400 font-semibold">{((stats.completed / stats.total) * 100).toFixed(0)}%</span>
+          </div>
+          <div className="flex items-center justify-between py-3 border-b border-white/5">
+            <span className="text-zinc-400">Critical Projects</span>
+            <span className="text-red-400 font-semibold">{stats.critical}</span>
+          </div>
+          <div className="flex items-center justify-between py-3">
+            <span className="text-zinc-400">Average Project Duration</span>
+            <span className="text-cyan-400 font-semibold">24 days</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ==========================================
+// PROJECTS DATA VIEW 
+// ==========================================
+interface ProjectsDataViewProps {
+  projects: PMProject[];
+  onCreateBOM: (project: PMProject) => void;
+}
+
+function ProjectsDataView({ projects, onCreateBOM }: ProjectsDataViewProps) {
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const filteredProjects = projects.filter(p => {
+    const matchesSearch = !searchTerm || 
+      p.projectCode?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      p.projectDescription?.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesStatus = statusFilter === 'all' || p.status === statusFilter;
+    return matchesSearch && matchesStatus;
+  });
+
+  const handleExport = () => {
+    const ws = XLSX.utils.json_to_sheet(projects.map(p => ({
+      'Project Code': p.projectCode,
+      'Description': p.projectDescription,
+      'Status': p.status,
+      'Progress': `${p.percentCompleted}%`,
+      'Parts Total': p.totalParts,
+      'Parts Produced': p.totalPartsProduced,
+      'Remaining': p.totalPartsToBeProduced,
+      'Target Date': p.targetCompletionDate,
+      'Priority': p.priority,
+      'Team': p.assignedTeam
+    })));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Projects");
+    XLSX.writeFile(wb, `PM_Projects_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Toolbar */}
+      <div className="bg-zinc-900/50 border border-white/10 rounded-xl p-4">
+        <div className="flex flex-wrap gap-4 items-center justify-between">
+          <div className="flex gap-3 flex-wrap">
+            <button
+              onClick={handleExport}
+              className="flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg transition-colors text-sm"
+            >
+              <FileText className="w-4 h-4" />
+              Export Excel
+            </button>
+            <select
+              value={statusFilter}
+              onChange={e => setStatusFilter(e.target.value)}
+              className="px-4 py-2 bg-zinc-800 border border-white/10 rounded-lg text-sm text-white"
+            >
+              <option value="all">All Status</option>
+              <option value="Pending">Pending</option>
+              <option value="In Progress">In Progress</option>
+              <option value="Completed">Completed</option>
+              <option value="On Hold">On Hold</option>
+              <option value="Delayed">Delayed</option>
+            </select>
+          </div>
+          
+          <div className="relative flex-1 max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
+            <input
+              type="text"
+              placeholder="Search projects..."
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 bg-zinc-800 border border-white/10 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-500"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Projects Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {filteredProjects.map(project => (
+          <motion.div
+            key={project.id}
+            whileHover={{ scale: 1.02 }}
+            className="bg-zinc-900/50 border border-white/10 rounded-xl p-5 hover:border-cyan-500/50 transition-all"
+          >
+            <div className="flex items-start justify-between mb-3">
+              <div>
+                <h4 className="font-semibold text-white mb-1">{project.projectCode}</h4>
+                <p className="text-sm text-zinc-400 line-clamp-2">{project.projectDescription || 'No description'}</p>
+              </div>
+              <span className={`px-2 py-1 rounded text-xs ${
+                project.priority === 'critical' ? 'bg-red-500/20 text-red-400' :
+                project.priority === 'high' ? 'bg-orange-500/20 text-orange-400' :
+                project.priority === 'medium' ? 'bg-blue-500/20 text-blue-400' :
+                'bg-zinc-500/20 text-zinc-400'
+              }`}>
+                {project.priority}
+              </span>
+            </div>
+
+            <div className="space-y-3 mb-4">
+              <div>
+                <div className="flex justify-between text-sm mb-1">
+                  <span className="text-zinc-500">Progress</span>
+                  <span className="text-white font-medium">{project.percentCompleted || 0}%</span>
+                </div>
+                <div className="w-full h-2 bg-zinc-800 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all ${
+                      (project.percentCompleted || 0) >= 100 ? 'bg-green-500' :
+                      (project.percentCompleted || 0) >= 50 ? 'bg-cyan-500' :
+                      'bg-blue-500'
+                    }`}
+                    style={{ width: `${project.percentCompleted || 0}%` }}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="bg-zinc-800/50 rounded p-2">
+                  <p className="text-zinc-500">Produced</p>
+                  <p className="text-white font-medium">{project.totalPartsProduced || 0}</p>
+                </div>
+                <div className="bg-zinc-800/50 rounded p-2">
+                  <p className="text-zinc-500">Total</p>
+                  <p className="text-white font-medium">{project.totalParts || 0}</p>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between text-xs">
+                <span className={`px-2 py-1 rounded ${
+                  project.status === 'Completed' ? 'bg-green-500/20 text-green-400' :
+                  project.status === 'In Progress' ? 'bg-blue-500/20 text-blue-400' :
+                  project.status === 'Delayed' ? 'bg-red-500/20 text-red-400' :
+                  'bg-zinc-500/20 text-zinc-400'
+                }`}>
+                  {project.status}
+                </span>
+                <span className="text-zinc-500">{project.assignedTeam || 'No team'}</span>
+              </div>
+            </div>
+
+            <button
+              onClick={() => onCreateBOM(project)}
+              className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded-lg hover:opacity-90 transition-opacity text-sm font-medium"
+            >
+              <ClipboardList className="w-4 h-4" />
+              Create BOM
+            </button>
+          </motion.div>
+        ))}
+      </div>
+
+      {filteredProjects.length === 0 && (
+        <div className="bg-zinc-900/50 border border-white/10 rounded-xl p-12 text-center">
+          <Package className="w-16 h-16 text-zinc-600 mx-auto mb-4" />
+          <h3 className="text-xl font-semibold text-zinc-400 mb-2">No Projects Found</h3>
+          <p className="text-zinc-500">Projects will appear here when added to the system</p>
+        </div>
+      )}
+    </div>
   );
 }
