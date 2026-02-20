@@ -275,6 +275,7 @@ export default function LoginPage() {
         // Store user data in localStorage for session
         localStorage.setItem('currentUser', JSON.stringify({
           id: foundUser.id,
+          uid: foundUser.id, // Store as both id and uid for compatibility
           email: foundUser.email,
           name: foundUser.name,
           role: foundUser.role,

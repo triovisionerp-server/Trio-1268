@@ -98,16 +98,22 @@ export default function PurchaseWorkflowNew() {
 
   // Get current user
   const getCurrentUser = () => {
-    if (typeof window === 'undefined') return { id: '', name: '', role: '' };
+    if (typeof window === 'undefined') return { id: '', uid: '', name: '', role: '' };
     const stored = localStorage.getItem('currentUser');
     if (stored) {
       try {
-        return JSON.parse(stored);
+        const user = JSON.parse(stored);
+        return {
+          uid: user.uid || user.id || '',
+          id: user.uid || user.id || '',
+          name: user.name || user.displayName || '',
+          role: user.role || ''
+        };
       } catch {
-        return { id: '', name: '', role: '' };
+        return { id: '', uid: '', name: '', role: '' };
       }
     }
-    return { id: '', name: '', role: '' };
+    return { id: '', uid: '', name: '', role: '' };
   };
 
   // Subscribe to data

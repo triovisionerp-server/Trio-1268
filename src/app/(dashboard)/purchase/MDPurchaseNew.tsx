@@ -65,12 +65,20 @@ export default function MDPurchaseOverviewNew() {
 
   // Get current user
   const getCurrentUser = () => {
-    if (typeof window === 'undefined') return { id: '', name: '', role: '' };
+    if (typeof window === 'undefined') return { uid: '', id: '', name: '', role: '' };
     const stored = localStorage.getItem('currentUser');
     if (stored) {
-      try { return JSON.parse(stored); } catch { return { id: '', name: '', role: '' }; }
+      try {
+        const user = JSON.parse(stored);
+        return {
+          uid: user.uid || user.id || '',
+          id: user.uid || user.id || '',
+          name: user.name || user.displayName || '',
+          role: user.role || ''
+        };
+      } catch { return { uid: '', id: '', name: '', role: '' }; }
     }
-    return { id: '', name: '', role: '' };
+    return { uid: '', id: '', name: '', role: '' };
   };
 
   // Subscribe to data
