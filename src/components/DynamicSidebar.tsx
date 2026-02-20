@@ -21,7 +21,8 @@ import {
   Wrench,
   ClipboardCheck,
   BarChart3,
-  LucideIcon
+  LucideIcon,
+  Sparkles
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth/AuthContext';
 import { db } from '@/lib/firebase/client';
@@ -41,6 +42,12 @@ interface MenuItem {
 
 // Define all menu items with role permissions
 const ALL_MENU_ITEMS: MenuItem[] = [
+  { 
+    name: "What's New", 
+    path: '/updates', 
+    icon: Sparkles, 
+    roles: '*' // Visible to all roles
+  },
   { 
     name: 'MD Dashboard', 
     path: '/md', 
@@ -256,6 +263,13 @@ export default function DynamicSidebar() {
                   }`}>
                     <Icon className="w-5 h-5 flex-shrink-0" />
                     <span className="truncate">{item.name}</span>
+                    
+                    {/* NEW badge for What's New page */}
+                    {item.path === '/updates' && !isActive && (
+                      <span className="ml-auto px-2 py-0.5 bg-gradient-to-r from-purple-600 to-pink-600 text-white text-xs rounded-full font-bold animate-pulse">
+                        NEW
+                      </span>
+                    )}
                     
                     {/* Badge for notifications */}
                     {item.path === '/md' && pendingApprovals > 0 && (

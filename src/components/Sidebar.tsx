@@ -17,7 +17,8 @@ import {
   Users,
   FileText,
   Calendar,
-  BarChart3
+  BarChart3,
+  Sparkles
 } from 'lucide-react';
 
 // ==========================================
@@ -34,6 +35,9 @@ type MenuItem = {
 };
 
 const ALL_MENU_ITEMS: MenuItem[] = [
+  // What's New - visible to all users
+  { name: "What's New", path: '/updates', icon: Sparkles, roles: ['md', 'pm', 'project_manager', 'store', 'store_manager', 'inventory', 'purchase', 'purchase_manager', 'purchase_team', 'production', 'supervisor', 'manufacturing', 'tooling', 'tool_room', 'fg_store', 'dispatch', 'logistics', 'hr', 'admin', 'manager', 'employee', 'data_entry'] },
+  
   // MD sees everything - top-level overview
   { name: 'MD Dashboard', path: '/md', icon: LayoutDashboard, showNotification: true, roles: ['md'] },
   { name: 'Analytics', path: '/md/analytics', icon: BarChart3, roles: ['md'] },
@@ -209,6 +213,7 @@ export default function Sidebar() {
           visibleMenu.map((item) => {
             const isActive = isActivePath(item.path);
             const showRedDot = item.showNotification && pendingApprovals > 0;
+            const isNewFeature = item.path === '/updates';
             
             return (
               <Link key={item.path} href={item.path}>
@@ -219,6 +224,13 @@ export default function Sidebar() {
                 }`}>
                   <item.icon className={`w-4 h-4 ${isActive ? 'text-white' : ''}`} />
                   {item.name}
+                  
+                  {/* NEW badge for What's New page */}
+                  {isNewFeature && !isActive && (
+                    <span className="ml-auto px-2 py-0.5 bg-gradient-to-r from-purple-600 to-pink-600 text-white text-xs rounded-full font-bold animate-pulse">
+                      NEW
+                    </span>
+                  )}
                   
                   {/* Red notification dot */}
                   {showRedDot && (
