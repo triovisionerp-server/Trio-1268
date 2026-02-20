@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { db } from '@/lib/firebase/client';
 import { collection, getDocs, query, where, orderBy, limit } from 'firebase/firestore';
+import { aiAnalytics, PredictiveInsight } from '@/lib/services/aiPredictiveAnalytics';
 
 interface AnalyticsMetric {
   id: string;
@@ -45,6 +46,7 @@ export default function AdvancedAnalyticsDashboard() {
   const [purchaseData, setPurchaseData] = useState<ChartData | null>(null);
   const [inventoryData, setInventoryData] = useState<any>(null);
   const [productionData, setProductionData] = useState<any>(null);
+  const [aiInsights, setAiInsights] = useState<PredictiveInsight[]>([]);
 
   useEffect(() => {
     loadDashboardData();
@@ -57,7 +59,8 @@ export default function AdvancedAnalyticsDashboard() {
         loadMetrics(),
         loadPurchaseAnalytics(),
         loadInventoryAnalytics(),
-        loadProductionAnalytics()
+        loadProductionAnalytics(),
+        loadAIInsights()
       ]);
     } catch (error) {
       console.error('Error loading dashboard:', error);
@@ -242,6 +245,15 @@ export default function AdvancedAnalyticsDashboard() {
       });
     } catch (error) {
       console.error('Error loading production analytics:', error);
+    }
+  };
+
+  const loadAIInsights = async () => {
+    try {
+      const insights = await aiAnalytics.getAllInsights();
+      setAiInsights(insights);
+    } catch (error) {
+      console.error('Error loading AI insights:', error);
     }
   };
 
@@ -457,6 +469,93 @@ export default function AdvancedAnalyticsDashboard() {
           </div>
         )}
       </motion.div>
+
+      {/* AI Predictive Insights - GAME CHANGER! */}
+      {aiInsights.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3 }}
+          className="bg-gradient-to-br from-purple-900/30 to-blue-900/30 border border-purple-500/50 rounded-xl p-6"
+        >
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-xl font-semibold flex items-center gap-2">
+              <TrendingUp className="w-5 h-5 text-purple-400" />
+              🤖 AI Predictive Insights
+              <span className="ml-2 px-2 py-1 bg-purple-500/20 text-purple-300 text-xs rounded-full">
+                POWERED BY ML
+              </span>
+            </h2>
+            <button 
+              onClick={loadAIInsights}
+              className="text-purple-400 hover:text-purple-300 transition-colors"
+            >
+              <RefreshCw className="w-5 h-5" />
+            </button>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {aiInsights.map((insight, index) => {
+              const severityColors = {
+                critical: 'from-red-500 to-red-700 border-red-500',
+                high: 'from-orange-500 to-orange-700 border-orange-500',
+                medium: 'from-yellow-500 to-yellow-700 border-yellow-500',
+                low: 'from-blue-500 to-blue-700 border-blue-500'
+              };
+
+              const severityIcons = {
+                critical: AlertTriangle,
+                high: AlertTriangle,
+                medium: TrendingDown,
+                low: TrendingUp
+              };
+
+              const SeverityIcon = severityIcons[insight.severity];
+              const colorClass = severityColors[insight.severity];
+
+              return (
+                <motion.div
+                  key={index}
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ delay: index * 0.1 }}
+                  className={`bg-gradient-to-br ${colorClass} bg-opacity-10 border rounded-lg p-4 hover:scale-105 transition-transform cursor-pointer`}
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="p-2 bg-white/10 rounded-lg">
+                      <SeverityIcon className="w-5 h-5 text-white" />
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between mb-2">
+                        <h3 className="font-semibold text-white">{insight.title}</h3>
+                        <span className="text-xs px-2 py-1 bg-white/20 rounded-full">
+                          {Math.round(insight.confidence)}%
+                        </span>
+                      </div>
+                      <p className="text-sm text-white/80 mb-3">{insight.description}</p>
+                      
+                      <div className="bg-black/20 rounded p-2 mb-3">
+                        <p className="text-xs font-mono text-white/90">{insight.prediction}</p>
+                      </div>
+
+                      <div className="flex items-start gap-2 text-xs">
+                        <CheckCircle className="w-4 h-4 text-green-400 flex-shrink-0 mt-0.5" />
+                        <p className="text-white/90">{insight.recommendedAction}</p>
+                      </div>
+
+                      {insight.impact && (
+                        <div className="mt-2 text-xs text-white/70 border-t border-white/10 pt-2">
+                          <strong>Impact:</strong> {insight.impact}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </motion.div>
+              );
+            })}
+          </div>
+        </motion.div>
+      )}
 
       {/* Quick Actions */}
       <div className="mt-8 flex items-center justify-center gap-4">
